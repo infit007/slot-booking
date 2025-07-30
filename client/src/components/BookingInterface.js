@@ -34,6 +34,7 @@ const BookingInterface = () => {
     } catch (error) {
       toast.error('Failed to fetch available slots');
       console.error('Error fetching slots:', error);
+      setSlotsData(null); // Clear data on error
     } finally {
       setLoading(false);
     }
@@ -56,6 +57,26 @@ const BookingInterface = () => {
     
     if (!selectedSlot) {
       toast.error('Please select a time slot');
+      return;
+    }
+
+    // Validate form fields
+    if (!bookingForm.name.trim() || !bookingForm.email.trim() || !bookingForm.phone.trim() || !bookingForm.purpose.trim()) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(bookingForm.email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    // Validate phone number
+    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+    if (!phoneRegex.test(bookingForm.phone.replace(/\s/g, ''))) {
+      toast.error('Please enter a valid phone number');
       return;
     }
 
@@ -82,7 +103,7 @@ const BookingInterface = () => {
       // Refresh slots
       fetchSlots(moment(selectedDate).format('YYYY-MM-DD'));
     } catch (error) {
-      const errorMessage = error.response?.data?.error || 'Failed to create booking';
+      const errorMessage = error.response?.data?.error || error.response?.data?.errors?.[0]?.msg || 'Failed to create booking';
       toast.error(errorMessage);
     } finally {
       setIsBooking(false);

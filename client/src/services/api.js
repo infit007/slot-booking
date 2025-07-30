@@ -2,11 +2,17 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://slot-booking-rpix.onrender.com/api';
 
+// Validate API URL
+if (!API_BASE_URL) {
+  console.error('API_BASE_URL is not configured');
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10 second timeout
 });
 
 // Request interceptor for logging
@@ -16,6 +22,7 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
+    console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
@@ -27,6 +34,16 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('API Error:', error.response?.data || error.message);
+    
+    // Handle specific error cases
+    if (error.code === 'ECONNABORTED') {
+      console.error('Request timeout');
+    } else if (error.response?.status === 404) {
+      console.error('API endpoint not found');
+    } else if (error.response?.status >= 500) {
+      console.error('Server error');
+    }
+    
     return Promise.reject(error);
   }
 );

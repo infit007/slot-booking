@@ -13,7 +13,17 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(morgan('combined'));
 
 // CORS configuration
@@ -62,11 +72,30 @@ if (process.env.DATABASE_URL) {
   initSQLite();
 }
 
+// Add error handling for pool
+if (pool) {
+  pool.on('error', (err) => {
+    console.error('Unexpected error on idle client', err);
+    process.exit(-1);
+  });
+}
+
 // Initialize SQLite database
 function initSQLite() {
   db = new sqlite3.Database('./bookings.db', (err) => {
     if (err) {
       console.error('Error opening SQLite database:', err);
+      // Try to create the database file if it doesn't exist
+      console.log('Attempting to create SQLite database...');
+      db = new sqlite3.Database('./bookings.db', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+        if (err) {
+          console.error('Failed to create SQLite database:', err);
+          process.exit(1);
+        } else {
+          console.log('Connected to SQLite database.');
+          initSQLiteTable();
+        }
+      });
     } else {
       console.log('Connected to SQLite database.');
       initSQLiteTable();
@@ -124,10 +153,10 @@ function initDatabase() {
 
 // Validation middleware
 const validateBooking = [
-  body('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters long'),
-  body('email').isEmail().normalizeEmail().withMessage('Must be a valid email'),
-  body('phone').matches(/^[\+]?[1-9][\d]{0,15}$/).withMessage('Must be a valid phone number'),
-  body('purpose').trim().isLength({ min: 5 }).withMessage('Purpose must be at least 5 characters long'),
+  body('name').trim().isLength({ min: 2, max: 255 }).withMessage('Name must be between 2 and 255 characters long').escape(),
+  body('email').isEmail().normalizeEmail().withMessage('Must be a valid email').escape(),
+  body('phone').matches(/^[\+]?[1-9][\d]{0,15}$/).withMessage('Must be a valid phone number').escape(),
+  body('purpose').trim().isLength({ min: 5, max: 1000 }).withMessage('Purpose must be between 5 and 1000 characters long').escape(),
   body('date').isISO8601().withMessage('Must be a valid date'),
   body('time_slot').matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Must be a valid time slot')
 ];
@@ -209,8 +238,8 @@ app.post('/api/bookings', validateBooking, (req, res) => {
 
   const { name, email, phone, purpose, date, time_slot } = req.body;
 
-  // Check if slot is already booked
   if (usePostgreSQL) {
+    // Check if slot is already booked (PostgreSQL)
     pool.query('SELECT id FROM bookings WHERE date = $1 AND time_slot = $2', [date, time_slot], (err, result) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
@@ -220,7 +249,7 @@ app.post('/api/bookings', validateBooking, (req, res) => {
         return res.status(409).json({ error: 'This time slot is already booked' });
       }
 
-      // Check daily booking limit
+      // Check daily booking limit (PostgreSQL)
       pool.query('SELECT COUNT(*) as count FROM bookings WHERE date = $1', [date], (err, result) => {
         if (err) {
           return res.status(500).json({ error: 'Database error' });
@@ -230,7 +259,7 @@ app.post('/api/bookings', validateBooking, (req, res) => {
           return res.status(409).json({ error: 'Daily booking limit reached (50 bookings)' });
         }
 
-        // Create booking
+        // Create booking (PostgreSQL)
         pool.query(
           'INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
           [name, email, phone, purpose, date, time_slot],
@@ -249,14 +278,37 @@ app.post('/api/bookings', validateBooking, (req, res) => {
       });
     });
   } else {
-    db.run('INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES (?, ?, ?, ?, ?, ?)', [name, email, phone, purpose, date, time_slot], function(err) {
+    // Check if slot is already booked (SQLite)
+    db.get('SELECT id FROM bookings WHERE date = ? AND time_slot = ?', [date, time_slot], (err, row) => {
       if (err) {
-        return res.status(500).json({ error: 'Failed to create booking' });
+        return res.status(500).json({ error: 'Database error' });
       }
-      res.status(201).json({
-        id: this.lastID,
-        message: 'Booking created successfully',
-        booking: { name, email, phone, purpose, date, time_slot }
+
+      if (row) {
+        return res.status(409).json({ error: 'This time slot is already booked' });
+      }
+
+      // Check daily booking limit (SQLite)
+      db.get('SELECT COUNT(*) as count FROM bookings WHERE date = ?', [date], (err, row) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (row.count >= 50) {
+          return res.status(409).json({ error: 'Daily booking limit reached (50 bookings)' });
+        }
+
+        // Create booking (SQLite)
+        db.run('INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES (?, ?, ?, ?, ?, ?)', [name, email, phone, purpose, date, time_slot], function(err) {
+          if (err) {
+            return res.status(500).json({ error: 'Failed to create booking' });
+          }
+          res.status(201).json({
+            id: this.lastID,
+            message: 'Booking created successfully',
+            booking: { name, email, phone, purpose, date, time_slot }
+          });
+        });
       });
     });
   }
@@ -284,7 +336,9 @@ app.get('/api/admin/bookings', (req, res) => {
       res.json(result.rows);
     });
   } else {
-    db.all(query, params, (err, rows) => {
+    // Convert PostgreSQL-style placeholders to SQLite-style
+    let sqliteQuery = query.replace(/\$(\d+)/g, '?');
+    db.all(sqliteQuery, params, (err, rows) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
@@ -344,7 +398,9 @@ app.get('/api/admin/export', (req, res) => {
       res.send(buffer);
     });
   } else {
-    db.all(query, params, (err, rows) => {
+    // Convert PostgreSQL-style placeholders to SQLite-style
+    let sqliteQuery = query.replace(/\$(\d+)/g, '?');
+    db.all(sqliteQuery, params, (err, rows) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
@@ -407,7 +463,9 @@ app.get('/api/admin/stats', (req, res) => {
       });
     });
   } else {
-    db.get(query, params, (err, row) => {
+    // Convert PostgreSQL-style placeholders to SQLite-style
+    let sqliteQuery = query.replace(/\$(\d+)/g, '?');
+    db.get(sqliteQuery, params, (err, row) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
