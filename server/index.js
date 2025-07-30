@@ -18,7 +18,7 @@ app.use(morgan('combined'));
 // CORS configuration
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://slot-booking-lime.vercel.app'] // Your actual Vercel URL
+    ? ['https://slot-booking-lime.vercel.app'] // Vercel frontend URL
     : ['http://localhost:3000'],
   credentials: true,
   optionsSuccessStatus: 200
