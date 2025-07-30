@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const sqlite3 = require('sqlite3').verbose();
 const XLSX = require('xlsx');
 const moment = require('moment');
 const { body, validationResult } = require('express-validator');
@@ -27,29 +28,77 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 
-// PostgreSQL database setup (Render PostgreSQL)
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+// Database setup - try PostgreSQL first, fallback to SQLite
+let pool = null;
+let db = null;
+let usePostgreSQL = false;
 
-// Test database connection
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Error connecting to Render PostgreSQL:', err);
-    console.error('DATABASE_URL:', process.env.DATABASE_URL ? 'Set' : 'Not set');
-    // Log the database URL with password masked for debugging
-    if (process.env.DATABASE_URL) {
-      const maskedUrl = process.env.DATABASE_URL.replace(/\/\/[^:]+:[^@]+@/, '//***:***@');
-      console.error('DATABASE_URL (masked):', maskedUrl);
+// Try PostgreSQL connection first
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  });
+
+  // Test PostgreSQL connection
+  pool.query('SELECT NOW()', (err, res) => {
+    if (err) {
+      console.error('Error connecting to Render PostgreSQL:', err);
+      console.error('DATABASE_URL:', process.env.DATABASE_URL ? 'Set' : 'Not set');
+      if (process.env.DATABASE_URL) {
+        const maskedUrl = process.env.DATABASE_URL.replace(/\/\/[^:]+:[^@]+@/, '//***:***@');
+        console.error('DATABASE_URL (masked):', maskedUrl);
+      }
+      console.log('Falling back to SQLite...');
+      initSQLite();
+    } else {
+      console.log('Connected to Render PostgreSQL database successfully.');
+      usePostgreSQL = true;
+      initDatabase();
     }
-  } else {
-    console.log('Connected to Render PostgreSQL database successfully.');
-    initDatabase();
-  }
-});
+  });
+} else {
+  console.log('No DATABASE_URL found, using SQLite...');
+  initSQLite();
+}
 
-// Initialize database tables
+// Initialize SQLite database
+function initSQLite() {
+  db = new sqlite3.Database('./bookings.db', (err) => {
+    if (err) {
+      console.error('Error opening SQLite database:', err);
+    } else {
+      console.log('Connected to SQLite database.');
+      initSQLiteTable();
+    }
+  });
+}
+
+// Initialize SQLite table
+function initSQLiteTable() {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS bookings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      date TEXT NOT NULL,
+      time_slot TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  
+  db.run(createTableQuery, (err) => {
+    if (err) {
+      console.error('Error creating SQLite table:', err);
+    } else {
+      console.log('SQLite bookings table created or already exists.');
+    }
+  });
+}
+
+// Initialize PostgreSQL database tables
 function initDatabase() {
   const createTableQuery = `
     CREATE TABLE IF NOT EXISTS bookings (
@@ -66,9 +115,9 @@ function initDatabase() {
   
   pool.query(createTableQuery, (err, res) => {
     if (err) {
-      console.error('Error creating table:', err);
+      console.error('Error creating PostgreSQL table:', err);
     } else {
-      console.log('Bookings table created or already exists.');
+      console.log('PostgreSQL bookings table created or already exists.');
     }
   });
 }
@@ -114,22 +163,41 @@ app.get('/api/slots/:date', (req, res) => {
   }
 
   // Get booked slots for the date
-  pool.query('SELECT time_slot::text FROM bookings WHERE date = $1', [date], (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
+  if (usePostgreSQL) {
+    pool.query('SELECT time_slot::text FROM bookings WHERE date = $1', [date], (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
 
-    const bookedSlots = result.rows.map(row => row.time_slot);
-    const availableSlots = timeSlots.filter(slot => !bookedSlots.includes(slot));
+      const bookedSlots = result.rows.map(row => row.time_slot);
+      const availableSlots = timeSlots.filter(slot => !bookedSlots.includes(slot));
 
-    res.json({
-      date,
-      availableSlots,
-      bookedSlots,
-      totalBookings: bookedSlots.length,
-      maxBookings: 50
+      res.json({
+        date,
+        availableSlots,
+        bookedSlots,
+        totalBookings: bookedSlots.length,
+        maxBookings: 50
+      });
     });
-  });
+  } else {
+    db.all('SELECT time_slot FROM bookings WHERE date = ?', [date], (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      const bookedSlots = rows.map(row => row.time_slot);
+      const availableSlots = timeSlots.filter(slot => !bookedSlots.includes(slot));
+
+      res.json({
+        date,
+        availableSlots,
+        bookedSlots,
+        totalBookings: bookedSlots.length,
+        maxBookings: 50
+      });
+    });
+  }
 });
 
 // Create a new booking
@@ -142,43 +210,56 @@ app.post('/api/bookings', validateBooking, (req, res) => {
   const { name, email, phone, purpose, date, time_slot } = req.body;
 
   // Check if slot is already booked
-  pool.query('SELECT id FROM bookings WHERE date = $1 AND time_slot = $2', [date, time_slot], (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-
-    if (result.rows.length > 0) {
-      return res.status(409).json({ error: 'This time slot is already booked' });
-    }
-
-    // Check daily booking limit
-    pool.query('SELECT COUNT(*) as count FROM bookings WHERE date = $1', [date], (err, result) => {
+  if (usePostgreSQL) {
+    pool.query('SELECT id FROM bookings WHERE date = $1 AND time_slot = $2', [date, time_slot], (err, result) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
 
-      if (parseInt(result.rows[0].count) >= 50) {
-        return res.status(409).json({ error: 'Daily booking limit reached (50 bookings)' });
+      if (result.rows.length > 0) {
+        return res.status(409).json({ error: 'This time slot is already booked' });
       }
 
-      // Create booking
-      pool.query(
-        'INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-        [name, email, phone, purpose, date, time_slot],
-        (err, result) => {
-          if (err) {
-            return res.status(500).json({ error: 'Failed to create booking' });
-          }
-
-          res.status(201).json({
-            id: result.rows[0].id,
-            message: 'Booking created successfully',
-            booking: { name, email, phone, purpose, date, time_slot }
-          });
+      // Check daily booking limit
+      pool.query('SELECT COUNT(*) as count FROM bookings WHERE date = $1', [date], (err, result) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
         }
-      );
+
+        if (parseInt(result.rows[0].count) >= 50) {
+          return res.status(409).json({ error: 'Daily booking limit reached (50 bookings)' });
+        }
+
+        // Create booking
+        pool.query(
+          'INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+          [name, email, phone, purpose, date, time_slot],
+          (err, result) => {
+            if (err) {
+              return res.status(500).json({ error: 'Failed to create booking' });
+            }
+
+            res.status(201).json({
+              id: result.rows[0].id,
+              message: 'Booking created successfully',
+              booking: { name, email, phone, purpose, date, time_slot }
+            });
+          }
+        );
+      });
     });
-  });
+  } else {
+    db.run('INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES (?, ?, ?, ?, ?, ?)', [name, email, phone, purpose, date, time_slot], function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to create booking' });
+      }
+      res.status(201).json({
+        id: this.lastID,
+        message: 'Booking created successfully',
+        booking: { name, email, phone, purpose, date, time_slot }
+      });
+    });
+  }
 });
 
 // Get all bookings (admin endpoint)
@@ -195,12 +276,21 @@ app.get('/api/admin/bookings', (req, res) => {
   
   query += ' ORDER BY date DESC, time_slot ASC';
   
-  pool.query(query, params, (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(result.rows);
-  });
+  if (usePostgreSQL) {
+    pool.query(query, params, (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(result.rows);
+    });
+  } else {
+    db.all(query, params, (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(rows);
+    });
+  }
 });
 
 // Export bookings to Excel
@@ -217,41 +307,79 @@ app.get('/api/admin/export', (req, res) => {
   
   query += ' ORDER BY date DESC, time_slot ASC';
   
-  pool.query(query, params, (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
+  if (usePostgreSQL) {
+    pool.query(query, params, (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
 
-    // Transform data for Excel
-    const excelData = result.rows.map(row => ({
-      'ID': row.id,
-      'Name': row.name,
-      'Email': row.email,
-      'Phone': row.phone,
-      'Purpose': row.purpose,
-      'Date': row.date,
-      'Time Slot': row.time_slot,
-      'Created At': row.created_at
-    }));
+      // Transform data for Excel
+      const excelData = result.rows.map(row => ({
+        'ID': row.id,
+        'Name': row.name,
+        'Email': row.email,
+        'Phone': row.phone,
+        'Purpose': row.purpose,
+        'Date': row.date,
+        'Time Slot': row.time_slot,
+        'Created At': row.created_at
+      }));
 
-    // Create workbook and worksheet
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
+      // Create workbook and worksheet
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
 
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Bookings');
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Bookings');
 
-    // Generate filename
-    const filename = `bookings_${startDate || 'all'}_${endDate || 'all'}_${moment().format('YYYY-MM-DD_HH-mm')}.xlsx`;
+      // Generate filename
+      const filename = `bookings_${startDate || 'all'}_${endDate || 'all'}_${moment().format('YYYY-MM-DD_HH-mm')}.xlsx`;
 
-    // Set headers for file download
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      // Set headers for file download
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-    // Write to buffer and send
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-    res.send(buffer);
-  });
+      // Write to buffer and send
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      res.send(buffer);
+    });
+  } else {
+    db.all(query, params, (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      // Transform data for Excel
+      const excelData = rows.map(row => ({
+        'ID': row.id,
+        'Name': row.name,
+        'Email': row.email,
+        'Phone': row.phone,
+        'Purpose': row.purpose,
+        'Date': row.date,
+        'Time Slot': row.time_slot,
+        'Created At': row.created_at
+      }));
+
+      // Create workbook and worksheet
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Bookings');
+
+      // Generate filename
+      const filename = `bookings_${startDate || 'all'}_${endDate || 'all'}_${moment().format('YYYY-MM-DD_HH-mm')}.xlsx`;
+
+      // Set headers for file download
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      // Write to buffer and send
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      res.send(buffer);
+    });
+  }
 });
 
 // Get booking statistics
@@ -266,17 +394,30 @@ app.get('/api/admin/stats', (req, res) => {
     params = [date];
   }
   
-  pool.query(query, params, (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    
-    res.json({
-      totalBookings: parseInt(result.rows[0].total),
-      maxBookings: 50,
-      availableBookings: 50 - parseInt(result.rows[0].total)
+  if (usePostgreSQL) {
+    pool.query(query, params, (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      res.json({
+        totalBookings: parseInt(result.rows[0].total),
+        maxBookings: 50,
+        availableBookings: 50 - parseInt(result.rows[0].total)
+      });
     });
-  });
+  } else {
+    db.get(query, params, (err, row) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({
+        totalBookings: parseInt(row.total),
+        maxBookings: 50,
+        availableBookings: 50 - parseInt(row.total)
+      });
+    });
+  }
 });
 
 // Remove static file serving - this is a backend-only deployment
@@ -296,12 +437,22 @@ app.listen(PORT, () => {
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  pool.end((err) => {
-    if (err) {
-      console.error('Error closing database pool:', err);
-    } else {
-      console.log('Database pool closed.');
-    }
-    process.exit(0);
-  });
+  if (usePostgreSQL) {
+    pool.end((err) => {
+      if (err) {
+        console.error('Error closing PostgreSQL database pool:', err);
+      } else {
+        console.log('PostgreSQL database pool closed.');
+      }
+    });
+  } else {
+    db.close((err) => {
+      if (err) {
+        console.error('Error closing SQLite database:', err);
+      } else {
+        console.log('SQLite database closed.');
+      }
+    });
+  }
+  process.exit(0);
 }); 
