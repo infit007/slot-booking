@@ -18,7 +18,7 @@ app.use(morgan('combined'));
 // CORS configuration
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-vercel-app.vercel.app'] // Replace with your actual Vercel URL
+    ? ['https://slot-booking-lime.vercel.app'] // Your actual Vercel URL
     : ['http://localhost:3000'],
   credentials: true,
   optionsSuccessStatus: 200
@@ -173,7 +173,7 @@ app.get('/api/admin/bookings', (req, res) => {
   let params = [];
   
   if (startDate && endDate) {
-    query += ' WHERE date BETWEEN ? AND ?';
+    query += ' WHERE date BETWEEN $1 AND $2';
     params = [startDate, endDate];
   }
   
@@ -195,7 +195,7 @@ app.get('/api/admin/export', (req, res) => {
   let params = [];
   
   if (startDate && endDate) {
-    query += ' WHERE date BETWEEN ? AND ?';
+    query += ' WHERE date BETWEEN $1 AND $2';
     params = [startDate, endDate];
   }
   
@@ -246,7 +246,7 @@ app.get('/api/admin/stats', (req, res) => {
   let params = [];
   
   if (date) {
-    query += ' WHERE date = ?';
+    query += ' WHERE date = $1';
     params = [date];
   }
   
