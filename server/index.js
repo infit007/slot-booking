@@ -27,9 +27,9 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 
-// PostgreSQL database setup (Supabase)
+// PostgreSQL database setup (Render)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://ai_study_mate_user:Y9lT6hIWuZpX037pVWDqvf4LlV7aqSES@dpg-d22cbcbe5dus739gcm30-a/ai_study_mate",
+  connectionString: process.env.DATABASE_URL || "postgresql://slot_booking_gef9_user:tRFkhdLP5yPBVauNPcHkWUREdr1xaGj7@dpg-d258532li9vc73f1askg-a/slot_booking_gef9",
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
@@ -38,7 +38,7 @@ pool.query('SELECT NOW()', (err, res) => {
   if (err) {
     console.error('Error connecting to PostgreSQL:', err);
   } else {
-    console.log('Connected to Supabase PostgreSQL database.');
+    console.log('Connected to Render PostgreSQL database.');
     initDatabase();
   }
 });
