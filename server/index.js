@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg');
+const sqlite3 = require('sqlite3').verbose();
 const XLSX = require('xlsx');
 const moment = require('moment');
 const { body, validationResult } = require('express-validator');
@@ -27,40 +27,30 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 
-// PostgreSQL database setup
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
-
-// Test database connection
-pool.query('SELECT NOW()', (err, res) => {
+// SQLite database setup
+const db = new sqlite3.Database('./bookings.db', (err) => {
   if (err) {
-    console.error('Error connecting to PostgreSQL:', err);
+    console.error('Error opening database:', err.message);
   } else {
-    console.log('Connected to PostgreSQL database.');
+    console.log('Connected to SQLite database.');
     initDatabase();
   }
 });
 
 // Initialize database tables
 function initDatabase() {
-  const createTableQuery = `
-    CREATE TABLE IF NOT EXISTS bookings (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) NOT NULL,
-      phone VARCHAR(20) NOT NULL,
-      purpose TEXT NOT NULL,
-      date DATE NOT NULL,
-      time_slot TIME NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `;
-  
-  pool.query(createTableQuery, (err, res) => {
+  db.run(`CREATE TABLE IF NOT EXISTS bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    date TEXT NOT NULL,
+    time_slot TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`, (err) => {
     if (err) {
-      console.error('Error creating table:', err);
+      console.error('Error creating table:', err.message);
     } else {
       console.log('Bookings table created or already exists.');
     }
@@ -98,12 +88,12 @@ app.get('/api/slots/:date', (req, res) => {
   }
 
   // Get booked slots for the date
-  pool.query('SELECT time_slot::text FROM bookings WHERE date = $1', [date], (err, result) => {
+  db.all('SELECT time_slot FROM bookings WHERE date = ?', [date], (err, rows) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
 
-    const bookedSlots = result.rows.map(row => row.time_slot);
+    const bookedSlots = rows.map(row => row.time_slot);
     const availableSlots = timeSlots.filter(slot => !bookedSlots.includes(slot));
 
     res.json({
@@ -126,36 +116,36 @@ app.post('/api/bookings', validateBooking, (req, res) => {
   const { name, email, phone, purpose, date, time_slot } = req.body;
 
   // Check if slot is already booked
-  pool.query('SELECT id FROM bookings WHERE date = $1 AND time_slot = $2', [date, time_slot], (err, result) => {
+  db.get('SELECT id FROM bookings WHERE date = ? AND time_slot = ?', [date, time_slot], (err, row) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
 
-    if (result.rows.length > 0) {
+    if (row) {
       return res.status(409).json({ error: 'This time slot is already booked' });
     }
 
     // Check daily booking limit
-    pool.query('SELECT COUNT(*) as count FROM bookings WHERE date = $1', [date], (err, result) => {
+    db.get('SELECT COUNT(*) as count FROM bookings WHERE date = ?', [date], (err, row) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
 
-      if (parseInt(result.rows[0].count) >= 50) {
+      if (row.count >= 50) {
         return res.status(409).json({ error: 'Daily booking limit reached (50 bookings)' });
       }
 
       // Create booking
-      pool.query(
-        'INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      db.run(
+        'INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES (?, ?, ?, ?, ?, ?)',
         [name, email, phone, purpose, date, time_slot],
-        (err, result) => {
+        function(err) {
           if (err) {
             return res.status(500).json({ error: 'Failed to create booking' });
           }
 
           res.status(201).json({
-            id: result.rows[0].id,
+            id: this.lastID,
             message: 'Booking created successfully',
             booking: { name, email, phone, purpose, date, time_slot }
           });
@@ -173,17 +163,17 @@ app.get('/api/admin/bookings', (req, res) => {
   let params = [];
   
   if (startDate && endDate) {
-    query += ' WHERE date BETWEEN $1 AND $2';
+    query += ' WHERE date BETWEEN ? AND ?';
     params = [startDate, endDate];
   }
   
   query += ' ORDER BY date DESC, time_slot ASC';
   
-  pool.query(query, params, (err, result) => {
+  db.all(query, params, (err, rows) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
-    res.json(result.rows);
+    res.json(rows);
   });
 });
 
@@ -195,19 +185,19 @@ app.get('/api/admin/export', (req, res) => {
   let params = [];
   
   if (startDate && endDate) {
-    query += ' WHERE date BETWEEN $1 AND $2';
+    query += ' WHERE date BETWEEN ? AND ?';
     params = [startDate, endDate];
   }
   
   query += ' ORDER BY date DESC, time_slot ASC';
   
-  pool.query(query, params, (err, result) => {
+  db.all(query, params, (err, rows) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
 
     // Transform data for Excel
-    const excelData = result.rows.map(row => ({
+    const excelData = rows.map(row => ({
       'ID': row.id,
       'Name': row.name,
       'Email': row.email,
@@ -246,19 +236,19 @@ app.get('/api/admin/stats', (req, res) => {
   let params = [];
   
   if (date) {
-    query += ' WHERE date = $1';
+    query += ' WHERE date = ?';
     params = [date];
   }
   
-  pool.query(query, params, (err, result) => {
+  db.get(query, params, (err, row) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
     
     res.json({
-      totalBookings: parseInt(result.rows[0].total),
+      totalBookings: row.total,
       maxBookings: 50,
-      availableBookings: 50 - parseInt(result.rows[0].total)
+      availableBookings: 50 - row.total
     });
   });
 });
@@ -278,11 +268,11 @@ app.listen(PORT, () => {
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  pool.end((err) => {
+  db.close((err) => {
     if (err) {
-      console.error('Error closing database pool:', err);
+      console.error('Error closing database:', err.message);
     } else {
-      console.log('Database pool closed.');
+      console.log('Database connection closed.');
     }
     process.exit(0);
   });
