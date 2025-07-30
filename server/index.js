@@ -29,7 +29,7 @@ app.use(express.json());
 
 // PostgreSQL database setup (Render)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://slot_booking_gef9_user:tRFkhdLP5yPBVauNPcHkWUREdr1xaGj7@dpg-d258532li9vc73f1askg-a/slot_booking_gef9",
+  connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
@@ -37,6 +37,7 @@ const pool = new Pool({
 pool.query('SELECT NOW()', (err, res) => {
   if (err) {
     console.error('Error connecting to PostgreSQL:', err);
+    console.error('DATABASE_URL:', process.env.DATABASE_URL ? 'Set' : 'Not set');
   } else {
     console.log('Connected to Render PostgreSQL database.');
     initDatabase();
@@ -78,6 +79,15 @@ const validateBooking = [
 ];
 
 // Routes
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    database: process.env.DATABASE_URL ? 'Configured' : 'Not configured'
+  });
+});
 
 // Get available slots for a specific date
 app.get('/api/slots/:date', (req, res) => {
@@ -263,17 +273,19 @@ app.get('/api/admin/stats', (req, res) => {
   });
 });
 
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/build')));
-  
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
-  });
-}
+// Remove static file serving - this is a backend-only deployment
+// if (process.env.NODE_ENV === 'production') {
+//   app.use(express.static(path.join(__dirname, '../client/build')));
+//   
+//   app.get('*', (req, res) => {
+//     res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
+//   });
+// }
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`DATABASE_URL: ${process.env.DATABASE_URL ? 'Set' : 'Not set'}`);
 });
 
 // Graceful shutdown

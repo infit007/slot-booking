@@ -8,4 +8,6 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 10000 
+        value: 10000
+      - key: DATABASE_URL
+        value: postgresql://slot_booking_gef9_user:tRFkhdLP5yPBVauNPcHkWUREdr1xaGj7@dpg-d258532li9vc73f1askg-a/slot_booking_gef9 
