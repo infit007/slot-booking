@@ -27,7 +27,7 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 
-// PostgreSQL database setup (Render)
+// PostgreSQL database setup (Render PostgreSQL)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
@@ -36,10 +36,15 @@ const pool = new Pool({
 // Test database connection
 pool.query('SELECT NOW()', (err, res) => {
   if (err) {
-    console.error('Error connecting to PostgreSQL:', err);
+    console.error('Error connecting to Render PostgreSQL:', err);
     console.error('DATABASE_URL:', process.env.DATABASE_URL ? 'Set' : 'Not set');
+    // Log the database URL with password masked for debugging
+    if (process.env.DATABASE_URL) {
+      const maskedUrl = process.env.DATABASE_URL.replace(/\/\/[^:]+:[^@]+@/, '//***:***@');
+      console.error('DATABASE_URL (masked):', maskedUrl);
+    }
   } else {
-    console.log('Connected to Render PostgreSQL database.');
+    console.log('Connected to Render PostgreSQL database successfully.');
     initDatabase();
   }
 });
@@ -85,7 +90,8 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    database: process.env.DATABASE_URL ? 'Configured' : 'Not configured'
+    database: process.env.DATABASE_URL ? 'Render PostgreSQL Configured' : 'Not configured',
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
