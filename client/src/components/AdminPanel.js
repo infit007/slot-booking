@@ -9,10 +9,12 @@ import {
   Users, 
   Clock, 
   Search,
-  RefreshCw
+  RefreshCw,
+  QrCode
 } from 'lucide-react';
 import moment from 'moment';
 import 'react-datepicker/dist/react-datepicker.css';
+import QRCodeModal from './QRCodeModal';
 
 const AdminPanel = () => {
   const [bookings, setBookings] = useState([]);
@@ -21,6 +23,8 @@ const AdminPanel = () => {
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
 
   useEffect(() => {
     fetchBookings();
@@ -78,7 +82,7 @@ const AdminPanel = () => {
 
   const filteredBookings = bookings.filter(booking =>
     booking.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    booking.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (booking.email && booking.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
     booking.purpose.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -88,12 +92,18 @@ const AdminPanel = () => {
     setSearchTerm('');
   };
 
+  const handleShowQRCode = (booking) => {
+    setSelectedBooking(booking);
+    setShowQRModal(true);
+  };
+
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h2>
-        <p className="text-gray-600">Manage bookings and view statistics</p>
-      </div>
+             <div className="text-center mb-8">
+         <h2 className="text-3xl font-bold text-gray-900 mb-2">SLOG SOLUTIONS</h2>
+         <h3 className="text-xl font-semibold text-gray-700 mb-2">Admin Dashboard</h3>
+         <p className="text-gray-600">Manage bookings and view statistics</p>
+       </div>
 
       {/* Statistics Cards */}
       {stats && (
@@ -186,7 +196,7 @@ const AdminPanel = () => {
           <Search className="h-5 w-5 text-gray-400 mr-3" />
           <input
             type="text"
-            placeholder="Search by name, email, or purpose..."
+                         placeholder="Search by name, email (if provided), or purpose..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="input-field flex-1"
@@ -231,21 +241,28 @@ const AdminPanel = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Purpose
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created
-                  </th>
-                </tr>
+                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Created
+                   </th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     QR Code
+                   </th>
+                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredBookings.map((booking) => (
-                  <tr key={booking.id} className="hover:bg-gray-50">
+                                 {filteredBookings.map((booking) => (
+                   <tr 
+                     key={booking.id} 
+                     className="hover:bg-gray-50 cursor-pointer"
+                     onClick={() => handleShowQRCode(booking)}
+                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{booking.name}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{booking.email}</div>
-                      <div className="text-sm text-gray-500">{booking.phone}</div>
-                    </td>
+                                         <td className="px-6 py-4 whitespace-nowrap">
+                       <div className="text-sm text-gray-900">{booking.email || 'Not provided'}</div>
+                       <div className="text-sm text-gray-500">{booking.phone}</div>
+                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
                         {moment(booking.date).format('MMM D, YYYY')}
@@ -257,10 +274,22 @@ const AdminPanel = () => {
                         {booking.purpose}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {moment(booking.created_at).format('MMM D, YYYY HH:mm')}
-                    </td>
-                  </tr>
+                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                       {moment(booking.created_at).format('MMM D, YYYY HH:mm')}
+                     </td>
+                     <td className="px-6 py-4 whitespace-nowrap">
+                       <button
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           handleShowQRCode(booking);
+                         }}
+                         className="text-primary-600 hover:text-primary-800 transition-colors"
+                         title="View QR Code"
+                       >
+                         <QrCode className="h-5 w-5" />
+                       </button>
+                     </td>
+                   </tr>
                 ))}
               </tbody>
             </table>
@@ -270,10 +299,18 @@ const AdminPanel = () => {
             <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500">No bookings found</p>
           </div>
-        )}
-      </div>
-    </div>
-  );
-};
+                 )}
+       </div>
+
+       {/* QR Code Modal */}
+       <QRCodeModal
+         isOpen={showQRModal}
+         onClose={() => setShowQRModal(false)}
+         bookingData={selectedBooking}
+         isUserView={false}
+       />
+     </div>
+   );
+ };
 
 export default AdminPanel; 

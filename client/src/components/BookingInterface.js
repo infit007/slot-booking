@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { Clock, User, Mail, Phone, FileText, CheckCircle } from 'lucide-react';
 import moment from 'moment';
 import CustomCalendar from './CustomCalendar';
+import QRCodeModal from './QRCodeModal';
 
 const BookingInterface = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -17,6 +18,8 @@ const BookingInterface = () => {
     purpose: ''
   });
   const [isBooking, setIsBooking] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [bookingConfirmation, setBookingConfirmation] = useState(null);
 
   // Fetch slots when date changes
   useEffect(() => {
@@ -61,16 +64,18 @@ const BookingInterface = () => {
     }
 
     // Validate form fields
-    if (!bookingForm.name.trim() || !bookingForm.email.trim() || !bookingForm.phone.trim() || !bookingForm.purpose.trim()) {
+    if (!bookingForm.name.trim() || !bookingForm.phone.trim() || !bookingForm.purpose.trim()) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(bookingForm.email)) {
-      toast.error('Please enter a valid email address');
-      return;
+    // Validate email format if provided
+    if (bookingForm.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(bookingForm.email)) {
+        toast.error('Please enter a valid email address');
+        return;
+      }
     }
 
     // Validate phone number
@@ -88,8 +93,15 @@ const BookingInterface = () => {
         time_slot: selectedSlot
       };
 
-      await bookingAPI.createBooking(bookingData);
+      const response = await bookingAPI.createBooking(bookingData);
       toast.success('Booking created successfully!');
+      
+      // Set booking confirmation data for QR code
+      setBookingConfirmation({
+        ...bookingData,
+        id: response.data.id || Date.now() // Use response ID or fallback
+      });
+      setShowQRModal(true);
       
       // Reset form
       setBookingForm({
@@ -164,15 +176,14 @@ const BookingInterface = () => {
                 <Mail className="h-4 w-4 inline mr-1" />
                 Email Address
               </label>
-              <input
-                type="email"
-                name="email"
-                value={bookingForm.email}
-                onChange={handleInputChange}
-                className="input-field"
-                placeholder="Enter your email"
-                required
-              />
+                             <input
+                 type="email"
+                 name="email"
+                 value={bookingForm.email}
+                 onChange={handleInputChange}
+                 className="input-field"
+                 placeholder="Enter your email (optional)"
+               />
             </div>
 
             <div>
@@ -272,6 +283,14 @@ const BookingInterface = () => {
           )}
         </div>
       </div>
+
+      {/* QR Code Modal */}
+      <QRCodeModal
+        isOpen={showQRModal}
+        onClose={() => setShowQRModal(false)}
+        bookingData={bookingConfirmation}
+        isUserView={true}
+      />
     </div>
   );
 };

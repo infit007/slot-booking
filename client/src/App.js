@@ -14,7 +14,10 @@ function App() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <Calendar className="h-8 w-8 text-primary-600 mr-3" />
-              <h1 className="text-xl font-bold text-gray-900">Slot Booking System</h1>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">Slot Booking System</h1>
+                <p className="text-xs text-gray-500">by SLOG SOLUTIONS</p>
+              </div>
             </div>
             
             <nav className="flex space-x-4">
@@ -53,7 +56,7 @@ function App() {
       <footer className="bg-white border-t border-gray-200 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <p className="text-center text-gray-500 text-sm">
-            © 2024 Slot Booking System. All rights reserved.
+            © 2024 SLOG SOLUTIONS. All rights reserved.
           </p>
         </div>
       </footer>
