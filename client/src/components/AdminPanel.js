@@ -52,13 +52,13 @@ const AdminPanel = () => {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async () => { 
     try {
       const start = startDate ? moment(startDate).format('YYYY-MM-DD') : null;
       const end = endDate ? moment(endDate).format('YYYY-MM-DD') : null;
-      
+         
       const response = await bookingAPI.exportBookings(start, end);
-      
+       
       // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
