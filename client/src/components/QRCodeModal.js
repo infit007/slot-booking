@@ -46,7 +46,7 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
   // Create QR code data string (after null check)
   const qrData = JSON.stringify({
     name: bookingData.name,
-    email: bookingData.email || '',
+    email: bookingData.email,
     phone: bookingData.phone,
     date: bookingData.date,
     time_slot: bookingData.time_slot,
@@ -224,7 +224,7 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Email:</span>
-              <span className="font-medium">{bookingData.email || 'Not provided'}</span>
+              <span className="font-medium">{bookingData.email}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Phone:</span>
