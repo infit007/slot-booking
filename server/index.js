@@ -154,7 +154,7 @@ function initDatabase() {
 // Validation middleware
 const validateBooking = [
   body('name').trim().isLength({ min: 2, max: 255 }).withMessage('Name must be between 2 and 255 characters long').escape(),
-  body('email').isEmail().normalizeEmail().withMessage('Must be a valid email').escape(),
+  body('email').optional().isEmail().normalizeEmail().withMessage('Must be a valid email').escape(),
   body('phone').matches(/^[\+]?[1-9][\d]{0,15}$/).withMessage('Must be a valid phone number').escape(),
   body('purpose').trim().isLength({ min: 5, max: 1000 }).withMessage('Purpose must be between 5 and 1000 characters long').escape(),
   body('date').isISO8601().withMessage('Must be a valid date'),
