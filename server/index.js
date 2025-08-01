@@ -109,7 +109,7 @@ function initSQLiteTable() {
     CREATE TABLE IF NOT EXISTS bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      email TEXT NOT NULL,
+      email TEXT,
       phone TEXT NOT NULL,
       purpose TEXT NOT NULL,
       date TEXT NOT NULL,
@@ -133,7 +133,7 @@ function initDatabase() {
     CREATE TABLE IF NOT EXISTS bookings (
       id SERIAL PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) NOT NULL,
+      email VARCHAR(255),
       phone VARCHAR(20) NOT NULL,
       purpose TEXT NOT NULL,
       date DATE NOT NULL,
@@ -282,6 +282,9 @@ app.post('/api/bookings', validateBooking, (req, res) => {
   }
 
   const { name, email, phone, purpose, date, time_slot } = req.body;
+  
+  // Handle optional email - convert empty string to null
+  const emailValue = email && email.trim() !== '' ? email : null;
 
   if (usePostgreSQL) {
     // Check if slot is already booked (PostgreSQL)
@@ -307,7 +310,7 @@ app.post('/api/bookings', validateBooking, (req, res) => {
         // Create booking (PostgreSQL)
         pool.query(
           'INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-          [name, email, phone, purpose, date, time_slot],
+          [name, emailValue, phone, purpose, date, time_slot],
           (err, result) => {
             if (err) {
               return res.status(500).json({ error: 'Failed to create booking' });
@@ -316,7 +319,7 @@ app.post('/api/bookings', validateBooking, (req, res) => {
             res.status(201).json({
               id: result.rows[0].id,
               message: 'Booking created successfully',
-              booking: { name, email, phone, purpose, date, time_slot }
+              booking: { name, email: emailValue, phone, purpose, date, time_slot }
             });
           }
         );
@@ -344,7 +347,7 @@ app.post('/api/bookings', validateBooking, (req, res) => {
         }
 
         // Create booking (SQLite)
-        db.run('INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES (?, ?, ?, ?, ?, ?)', [name, email, phone, purpose, date, time_slot], function(err) {
+        db.run('INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES (?, ?, ?, ?, ?, ?)', [name, emailValue, phone, purpose, date, time_slot], function(err) {
           if (err) {
             return res.status(500).json({ error: 'Failed to create booking' });
           }
