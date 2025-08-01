@@ -11,8 +11,6 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const canvasRef = useRef(null);
 
-  if (!isOpen || !bookingData) return null;
-
   // Create QR code data string
   const qrData = JSON.stringify({
     name: bookingData.name,
@@ -52,6 +50,9 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
       return () => clearInterval(interval);
     }
   }, [isOpen]);
+
+  // Early return after all hooks
+  if (!isOpen || !bookingData) return null;
 
   const handleDownload = async () => {
     try {
