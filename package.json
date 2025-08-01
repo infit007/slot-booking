@@ -11,10 +11,18 @@
     "install-all": "npm install && cd server && npm install && cd ../client && npm install",
     "vercel-build": "cd client && npm install && npm run build"
   },
-  "keywords": ["slot-booking", "calendar", "react", "nodejs"],
+  "keywords": [
+    "slot-booking",
+    "calendar",
+    "react",
+    "nodejs"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1"
   }
-} 
+}

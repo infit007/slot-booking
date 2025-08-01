@@ -2,14 +2,14 @@
 export const config = {
   // Company information
   company: {
-    name: 'Your Company Name', // Change this to your actual company name
+    name: 'SLOG SOLUTIONS', // Company name for QR codes and display
     logo: null, // Add logo URL if available
-    website: 'https://yourcompany.com', // Add your website URL
+    website: 'https://slogsolutions.com', // Add your website URL
   },
   
   // Booking settings
   booking: {
-    maxSlotsPerDay: 18, // Number of 30-minute slots from 9 AM to 6 PM
+    maxSlotsPerDay: 1000, // Total slots available per day
     timeSlots: [
       '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
       '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',

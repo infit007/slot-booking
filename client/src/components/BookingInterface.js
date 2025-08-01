@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { bookingAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { Clock, User, Mail, Phone, FileText, CheckCircle } from 'lucide-react';
+import { Clock, User, Mail, Phone, FileText, CheckCircle, RefreshCw } from 'lucide-react';
 import moment from 'moment';
 import CustomCalendar from './CustomCalendar';
 import QRCodeModal from './QRCodeModal';
+import { config } from '../config';
 
 const BookingInterface = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -20,6 +21,30 @@ const BookingInterface = () => {
   const [isBooking, setIsBooking] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [bookingConfirmation, setBookingConfirmation] = useState(null);
+  const [liveSlotStatus, setLiveSlotStatus] = useState({ available: 0, total: config.booking.maxSlotsPerDay });
+  const [isLoadingSlotStatus, setIsLoadingSlotStatus] = useState(false);
+  const [weeklyBookingStatus, setWeeklyBookingStatus] = useState(null);
+  const [isCheckingWeeklyStatus, setIsCheckingWeeklyStatus] = useState(false);
+
+  // Fetch live slot status
+  const fetchLiveSlotStatus = async () => {
+    try {
+      setIsLoadingSlotStatus(true);
+      const response = await bookingAPI.getSlotStatus();
+      const { availableSlots, maxSlots } = response.data;
+      
+      setLiveSlotStatus({
+        available: availableSlots,
+        total: maxSlots
+      });
+    } catch (error) {
+      console.error('Error fetching live slot status:', error);
+      // Fallback to default values
+      setLiveSlotStatus({ available: 985, total: config.booking.maxSlotsPerDay });
+    } finally {
+      setIsLoadingSlotStatus(false);
+    }
+  };
 
   // Fetch slots when date changes
   useEffect(() => {
@@ -28,11 +53,44 @@ const BookingInterface = () => {
     }
   }, [selectedDate]);
 
+  // Fetch live slot status on component mount and every 30 seconds
+  useEffect(() => {
+    fetchLiveSlotStatus();
+    const interval = setInterval(fetchLiveSlotStatus, 30000); // Update every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  // Refresh slots data every 30 seconds to update booking status
+  useEffect(() => {
+    if (selectedDate) {
+      const interval = setInterval(() => {
+        fetchSlots(moment(selectedDate).format('YYYY-MM-DD'));
+      }, 30000); // Update every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [selectedDate]);
+
   const fetchSlots = async (date) => {
     setLoading(true);
     try {
       const response = await bookingAPI.getSlots(date);
-      setSlotsData(response.data);
+      console.log('Frontend received slots data:', response.data);
+      
+             // Ensure allSlots exists, use fixed 10 slots if missing
+       let slotsData = response.data;
+       if (!slotsData.allSlots || slotsData.allSlots.length === 0) {
+         const timeSlots = [
+           '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
+           '12:00', '15:00', '15:30', '16:00'
+         ];
+         
+         slotsData = {
+           ...slotsData,
+           allSlots: timeSlots
+         };
+       }
+      
+      setSlotsData(slotsData);
       setSelectedSlot(null); // Reset selected slot when date changes
     } catch (error) {
       toast.error('Failed to fetch available slots');
@@ -53,6 +111,33 @@ const BookingInterface = () => {
       ...prev,
       [name]: value
     }));
+    
+    // Check weekly booking status when phone or email changes
+    if (name === 'phone' || name === 'email') {
+      const phone = name === 'phone' ? value : bookingForm.phone;
+      const email = name === 'email' ? value : bookingForm.email;
+      
+      if (phone && phone.trim()) {
+        checkWeeklyBookingStatus(email || null, phone, moment(selectedDate).format('YYYY-MM-DD'));
+      } else {
+        setWeeklyBookingStatus(null);
+      }
+    }
+  };
+
+  const checkWeeklyBookingStatus = async (email, phone, date) => {
+    if (!phone || !phone.trim()) return;
+    
+    setIsCheckingWeeklyStatus(true);
+    try {
+      const response = await bookingAPI.checkWeeklyStatus(email, phone, date);
+      setWeeklyBookingStatus(response.data);
+    } catch (error) {
+      console.error('Error checking weekly booking status:', error);
+      setWeeklyBookingStatus(null);
+    } finally {
+      setIsCheckingWeeklyStatus(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -79,19 +164,43 @@ const BookingInterface = () => {
     }
 
     // Validate phone number
-    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+    const phoneRegex = /^[+]?[1-9][\d]{0,15}$/;
     if (!phoneRegex.test(bookingForm.phone.replace(/\s/g, ''))) {
       toast.error('Please enter a valid phone number');
       return;
     }
 
+    // Check weekly booking restriction
+    try {
+      const weeklyStatusResponse = await bookingAPI.checkWeeklyStatus(
+        bookingForm.email || null, 
+        bookingForm.phone
+      );
+      
+      if (weeklyStatusResponse.data.hasBookedThisWeek) {
+        toast.error('You have already booked a slot this week. Only one booking per week is allowed.');
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking weekly booking status:', error);
+      // Continue with booking attempt - server will validate again
+    }
+
     setIsBooking(true);
     try {
+      // Prepare booking data, exclude email if it's empty
       const bookingData = {
-        ...bookingForm,
+        name: bookingForm.name,
+        phone: bookingForm.phone,
+        purpose: bookingForm.purpose,
         date: moment(selectedDate).format('YYYY-MM-DD'),
         time_slot: selectedSlot
       };
+      
+      // Only add email if it's not empty
+      if (bookingForm.email && bookingForm.email.trim() !== '') {
+        bookingData.email = bookingForm.email;
+      }
 
       const response = await bookingAPI.createBooking(bookingData);
       toast.success('Booking created successfully!');
@@ -99,6 +208,7 @@ const BookingInterface = () => {
       // Set booking confirmation data for QR code
       setBookingConfirmation({
         ...bookingData,
+        email: bookingForm.email || '', // Include email for QR code display
         id: response.data.id || Date.now() // Use response ID or fallback
       });
       setShowQRModal(true);
@@ -122,19 +232,49 @@ const BookingInterface = () => {
     }
   };
 
-  const isSlotAvailable = (slot) => {
-    return slotsData?.availableSlots?.includes(slot);
-  };
+  // These functions are available for future use if needed
+  // const isSlotAvailable = (slot) => {
+  //   return slotsData?.availableSlots?.includes(slot);
+  // };
 
-  const isSlotBooked = (slot) => {
-    return slotsData?.bookedSlots?.includes(slot);
-  };
+  // const isSlotBooked = (slot) => {
+  //   return slotsData?.bookedSlots?.includes(slot);
+  // };
 
   return (
     <div className="max-w-7xl mx-auto">
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-2">Book Your Slot</h2>
         <p className="text-gray-600">Select a date and time slot that works best for you</p>
+        
+        {/* Live Slot Status */}
+        <div className="mt-4 bg-blue-50 rounded-lg p-4 max-w-md mx-auto">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-blue-900 text-sm">Live Slot Status</h3>
+            <button
+              onClick={fetchLiveSlotStatus}
+              disabled={isLoadingSlotStatus}
+              className="text-blue-600 hover:text-blue-800 transition-colors"
+              title="Refresh slot status"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoadingSlotStatus ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-bold text-green-600">
+              {liveSlotStatus.available} / {liveSlotStatus.total} booking slots available
+            </p>
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+              <div 
+                className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(liveSlotStatus.available / liveSlotStatus.total) * 100}%` }}
+              ></div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Updates automatically every 30 seconds
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -186,21 +326,53 @@ const BookingInterface = () => {
                />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                <Phone className="h-4 w-4 inline mr-1" />
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                name="phone"
-                value={bookingForm.phone}
-                onChange={handleInputChange}
-                className="input-field"
-                placeholder="Enter your phone number"
-                required
-              />
-            </div>
+                         <div>
+               <label className="block text-sm font-medium text-gray-700 mb-1">
+                 <Phone className="h-4 w-4 inline mr-1" />
+                 Phone Number
+               </label>
+               <input
+                 type="tel"
+                 name="phone"
+                 value={bookingForm.phone}
+                 onChange={handleInputChange}
+                 className="input-field"
+                 placeholder="Enter your phone number"
+                 required
+               />
+               
+               {/* Weekly Booking Status */}
+               {isCheckingWeeklyStatus && (
+                 <div className="mt-2 text-sm text-blue-600">
+                   <div className="flex items-center">
+                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                     Checking weekly booking status...
+                   </div>
+                 </div>
+               )}
+               
+               {weeklyBookingStatus && !isCheckingWeeklyStatus && (
+                 <div className={`mt-2 p-2 rounded-md text-sm ${
+                   weeklyBookingStatus.hasBookedThisWeek 
+                     ? 'bg-red-50 text-red-700 border border-red-200' 
+                     : 'bg-green-50 text-green-700 border border-green-200'
+                 }`}>
+                   <div className="flex items-center">
+                     {weeklyBookingStatus.hasBookedThisWeek ? (
+                       <>
+                         <span className="text-red-500 mr-1">⚠️</span>
+                         <span>You have already booked a slot this week</span>
+                       </>
+                     ) : (
+                       <>
+                         <span className="text-green-500 mr-1">✅</span>
+                         <span>You can book a slot this week</span>
+                       </>
+                     )}
+                   </div>
+                 </div>
+               )}
+             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -226,13 +398,15 @@ const BookingInterface = () => {
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={!selectedSlot || isBooking}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isBooking ? 'Creating Booking...' : 'Confirm Booking'}
-            </button>
+                         <button
+               type="submit"
+               disabled={!selectedSlot || isBooking || (weeklyBookingStatus && weeklyBookingStatus.hasBookedThisWeek)}
+               className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+             >
+               {isBooking ? 'Creating Booking...' : 
+                (weeklyBookingStatus && weeklyBookingStatus.hasBookedThisWeek) ? 'Already Booked This Week' : 
+                'Confirm Booking'}
+             </button>
           </form>
         </div>
 
@@ -243,11 +417,11 @@ const BookingInterface = () => {
               <Clock className="h-5 w-5 text-primary-600 mr-2" />
               <h3 className="text-lg font-semibold text-gray-900">Available Time Slots</h3>
             </div>
-            {slotsData && (
-              <div className="text-sm text-gray-500">
-                {slotsData.totalBookings}/{slotsData.maxBookings} booked
-              </div>
-            )}
+                         {slotsData && (
+               <div className="text-sm text-gray-500">
+                 {slotsData.totalBookings}/1000 total • {slotsData.availableSlots.length} time slots available
+               </div>
+             )}
           </div>
 
           {loading ? (
@@ -255,28 +429,56 @@ const BookingInterface = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             </div>
           ) : slotsData ? (
-            <div className="grid grid-cols-2 gap-2">
-              {slotsData.availableSlots.map((slot) => (
-                <button
-                  key={slot}
-                  onClick={() => handleSlotSelect(slot)}
-                  className={`p-3 text-sm font-medium rounded-lg border transition-all duration-200 ${
-                    selectedSlot === slot
-                      ? 'slot-selected'
-                      : 'slot-available'
-                  }`}
-                >
-                  {slot}
-                </button>
-              ))}
-              {slotsData.bookedSlots.map((slot) => (
-                <div
-                  key={slot}
-                  className="slot-booked p-3 text-sm font-medium rounded-lg border"
-                >
-                  {slot}
+                         <div className="grid grid-cols-2 gap-3">
+               {(slotsData.slotStatus || []).map((slotInfo) => {
+                 const isSelected = selectedSlot === slotInfo.time;
+                 const isFullyBooked = slotInfo.isFullyBooked;
+                 const isAvailable = slotInfo.isAvailable;
+                 
+                 // Debug logging for slot status
+                 console.log(`Slot ${slotInfo.time}:`, { 
+                   bookingCount: slotInfo.bookingCount, 
+                   isFullyBooked, 
+                   isAvailable, 
+                   isSelected 
+                 });
+                 
+                 if (isFullyBooked) {
+                   return (
+                     <div
+                       key={slotInfo.time}
+                       className="slot-booked p-3 text-sm font-medium rounded-lg border flex flex-col items-center justify-center cursor-not-allowed"
+                       title="This slot is fully booked"
+                     >
+                       <span className="font-bold">{slotInfo.time}</span>
+                       <span className="text-xs opacity-75">Fully Booked</span>
+                       <span className="text-xs opacity-75">{slotInfo.bookingCount}/100</span>
+                     </div>
+                   );
+                 } else {
+                   return (
+                     <button
+                       key={slotInfo.time}
+                       onClick={() => handleSlotSelect(slotInfo.time)}
+                       className={`p-3 text-sm font-medium rounded-lg border transition-all duration-200 flex flex-col items-center justify-center ${
+                         isSelected
+                           ? 'slot-selected'
+                           : 'slot-available'
+                       }`}
+                       title={`${slotInfo.availableSpots} spots available`}
+                     >
+                       <span className="font-bold">{slotInfo.time}</span>
+                       <span className="text-xs opacity-75">{slotInfo.bookingCount}/100</span>
+                     </button>
+                   );
+                 }
+               })}
+              {(!slotsData.allSlots || slotsData.allSlots.length === 0) && (
+                <div className="col-span-2 text-center py-8 text-gray-500">
+                  <p>No time slots available for this date.</p>
+                  <p className="text-sm mt-1">Please select a different date.</p>
                 </div>
-              ))}
+              )}
             </div>
           ) : (
             <p className="text-gray-500 text-center py-4">Select a date to view available slots</p>

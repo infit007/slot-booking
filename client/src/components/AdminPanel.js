@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import DatePicker from 'react-datepicker';
 import { bookingAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
@@ -10,7 +10,10 @@ import {
   Clock, 
   Search,
   RefreshCw,
-  QrCode
+  QrCode,
+  Trash2,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import moment from 'moment';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -25,13 +28,11 @@ const AdminPanel = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showQRModal, setShowQRModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [selectedBookings, setSelectedBookings] = useState([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  useEffect(() => {
-    fetchBookings();
-    fetchStats();
-  }, [startDate, endDate]);
-
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
     setLoading(true);
     try {
       const start = startDate ? moment(startDate).format('YYYY-MM-DD') : null;
@@ -45,7 +46,12 @@ const AdminPanel = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    fetchBookings();
+    fetchStats();
+  }, [fetchBookings]);
 
   const fetchStats = async () => {
     try {
@@ -95,6 +101,70 @@ const AdminPanel = () => {
   const handleShowQRCode = (booking) => {
     setSelectedBooking(booking);
     setShowQRModal(true);
+  };
+
+  const handleSelectBooking = (bookingId) => {
+    setSelectedBookings(prev => 
+      prev.includes(bookingId) 
+        ? prev.filter(id => id !== bookingId)
+        : [...prev, bookingId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedBookings.length === filteredBookings.length) {
+      setSelectedBookings([]);
+    } else {
+      setSelectedBookings(filteredBookings.map(booking => booking.id));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedBookings.length === 0) {
+      toast.error('Please select bookings to delete');
+      return;
+    }
+
+    const confirmMessage = selectedBookings.length === 1 
+      ? 'Are you sure you want to delete this booking?' 
+      : `Are you sure you want to delete ${selectedBookings.length} bookings? This action cannot be undone.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await bookingAPI.deleteMultipleBookings(selectedBookings);
+      toast.success(response.data.message);
+      setSelectedBookings([]);
+      fetchBookings();
+      fetchStats();
+    } catch (error) {
+      const errorMessage = error.response?.data?.error || 'Failed to delete bookings';
+      toast.error(errorMessage);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteSingle = async (bookingId, bookingName) => {
+    if (!window.confirm(`Are you sure you want to delete the booking for "${bookingName}"?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await bookingAPI.deleteBooking(bookingId);
+      toast.success(response.data.message);
+      fetchBookings();
+      fetchStats();
+    } catch (error) {
+      const errorMessage = error.response?.data?.error || 'Failed to delete booking';
+      toast.error(errorMessage);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -215,9 +285,26 @@ const AdminPanel = () => {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Bookings</h3>
-          <span className="text-sm text-gray-500">
-            {filteredBookings.length} booking{filteredBookings.length !== 1 ? 's' : ''}
-          </span>
+          <div className="flex items-center gap-4">
+            {selectedBookings.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">
+                  {selectedBookings.length} selected
+                </span>
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={isDeleting}
+                  className="btn-danger flex items-center text-sm"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  {isDeleting ? 'Deleting...' : `Delete Selected`}
+                </button>
+              </div>
+            )}
+            <span className="text-sm text-gray-500">
+              {filteredBookings.length} booking{filteredBookings.length !== 1 ? 's' : ''}
+            </span>
+          </div>
         </div>
 
         {loading ? (
@@ -230,6 +317,18 @@ const AdminPanel = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button
+                      onClick={handleSelectAll}
+                      className="flex items-center hover:text-gray-700 transition-colors"
+                    >
+                      {selectedBookings.length === filteredBookings.length && filteredBookings.length > 0 ? (
+                        <CheckSquare className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -241,53 +340,86 @@ const AdminPanel = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Purpose
                   </th>
-                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Created
-                   </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     QR Code
-                   </th>
-                 </tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                                  {filteredBookings.map((booking) => (
                    <tr 
                      key={booking.id} 
-                     className="hover:bg-gray-50 cursor-pointer"
-                     onClick={() => handleShowQRCode(booking)}
+                     className="hover:bg-gray-50"
                    >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{booking.name}</div>
-                    </td>
-                                         <td className="px-6 py-4 whitespace-nowrap">
+                     <td className="px-6 py-4 whitespace-nowrap">
+                       <button
+                         onClick={() => handleSelectBooking(booking.id)}
+                         className="flex items-center hover:text-gray-700 transition-colors"
+                       >
+                         {selectedBookings.includes(booking.id) ? (
+                           <CheckSquare className="h-4 w-4" />
+                         ) : (
+                           <Square className="h-4 w-4" />
+                         )}
+                       </button>
+                     </td>
+                     <td 
+                       className="px-6 py-4 whitespace-nowrap cursor-pointer"
+                       onClick={() => handleShowQRCode(booking)}
+                     >
+                       <div className="text-sm font-medium text-gray-900">{booking.name}</div>
+                     </td>
+                     <td 
+                       className="px-6 py-4 whitespace-nowrap cursor-pointer"
+                       onClick={() => handleShowQRCode(booking)}
+                     >
                        <div className="text-sm text-gray-900">{booking.email || 'Not provided'}</div>
                        <div className="text-sm text-gray-500">{booking.phone}</div>
                      </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {moment(booking.date).format('MMM D, YYYY')}
-                      </div>
-                      <div className="text-sm text-gray-500">{booking.time_slot}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 max-w-xs truncate">
-                        {booking.purpose}
-                      </div>
-                    </td>
-                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                     <td 
+                       className="px-6 py-4 whitespace-nowrap cursor-pointer"
+                       onClick={() => handleShowQRCode(booking)}
+                     >
+                       <div className="text-sm text-gray-900">
+                         {moment(booking.date).format('MMM D, YYYY')}
+                       </div>
+                       <div className="text-sm text-gray-500">{booking.time_slot}</div>
+                     </td>
+                     <td 
+                       className="px-6 py-4 cursor-pointer"
+                       onClick={() => handleShowQRCode(booking)}
+                     >
+                       <div className="text-sm text-gray-900 max-w-xs truncate">
+                         {booking.purpose}
+                       </div>
+                     </td>
+                     <td 
+                       className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer"
+                       onClick={() => handleShowQRCode(booking)}
+                     >
                        {moment(booking.created_at).format('MMM D, YYYY HH:mm')}
                      </td>
                      <td className="px-6 py-4 whitespace-nowrap">
-                       <button
-                         onClick={(e) => {
-                           e.stopPropagation();
-                           handleShowQRCode(booking);
-                         }}
-                         className="text-primary-600 hover:text-primary-800 transition-colors"
-                         title="View QR Code"
-                       >
-                         <QrCode className="h-5 w-5" />
-                       </button>
+                       <div className="flex items-center gap-2">
+                         <button
+                           onClick={() => handleShowQRCode(booking)}
+                           className="text-primary-600 hover:text-primary-800 transition-colors"
+                           title="View QR Code"
+                         >
+                           <QrCode className="h-5 w-5" />
+                         </button>
+                         <button
+                           onClick={() => handleDeleteSingle(booking.id, booking.name)}
+                           disabled={isDeleting}
+                           className="text-red-600 hover:text-red-800 transition-colors"
+                           title="Delete Booking"
+                         >
+                           <Trash2 className="h-5 w-5" />
+                         </button>
+                       </div>
                      </td>
                    </tr>
                 ))}

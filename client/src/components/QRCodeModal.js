@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { X, Download, CheckCircle, RefreshCw } from 'lucide-react';
 import moment from 'moment';
@@ -9,14 +9,13 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
   const [slotStatus, setSlotStatus] = useState({ available: 0, total: config.booking.maxSlotsPerDay });
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const canvasRef = useRef(null);
 
   // Fetch slot status
   const fetchSlotStatus = async () => {
     try {
       setIsLoading(true);
-      const response = await bookingAPI.getSlotStatus();
-      const { availableSlots, totalBookings, maxSlots } = response.data;
+             const response = await bookingAPI.getSlotStatus();
+       const { availableSlots, maxSlots } = response.data;
       
       setSlotStatus({
         available: availableSlots,
@@ -25,7 +24,7 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
     } catch (error) {
       console.error('Error fetching slot status:', error);
       // Fallback to default values
-      setSlotStatus({ available: 15, total: config.booking.maxSlotsPerDay });
+      setSlotStatus({ available: 985, total: config.booking.maxSlotsPerDay });
     } finally {
       setIsLoading(false);
     }

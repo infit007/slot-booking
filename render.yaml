@@ -10,5 +10,5 @@ services:
       - key: PORT
         value: 10000
       - key: DATABASE_URL
-        value: postgresql://slot_booking_mngn_user:pcPK4y9HQq6AVRHe7MPW6wu0EdMkiQy3@dpg-d258kkidbo4c73ae6pk0-a/slot_booking_mngn
+        value: postgresql://slot_booking_gef9_user:tRFkhdLP5yPBVauNPcHkWUREdr1xaGj7@dpg-d258532li9vc73f1askg-a/slot_booking_gef9
     healthCheckPath: /api/health 

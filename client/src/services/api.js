@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://slot-booking-rpix.onrender.com/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 // Validate API URL
 if (!API_BASE_URL) {
@@ -55,6 +55,14 @@ export const bookingAPI = {
   // Get overall slot status
   getSlotStatus: () => api.get('/slots/status/overall'),
   
+  // Check weekly booking status
+  checkWeeklyStatus: (email, phone, date) => {
+    const params = { phone };
+    if (email) params.email = email;
+    if (date) params.date = date;
+    return api.get('/user/weekly-status', { params });
+  },
+  
   // Create a new booking
   createBooking: (bookingData) => api.post('/bookings', bookingData),
   
@@ -65,6 +73,12 @@ export const bookingAPI = {
     if (endDate) params.endDate = endDate;
     return api.get('/admin/bookings', { params });
   },
+  
+  // Delete a single booking (admin)
+  deleteBooking: (id) => api.delete(`/admin/bookings/${id}`),
+  
+  // Delete multiple bookings (admin)
+  deleteMultipleBookings: (ids) => api.delete('/admin/bookings', { data: { ids } }),
   
   // Export bookings to Excel
   exportBookings: (startDate, endDate) => {
