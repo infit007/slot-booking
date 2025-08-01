@@ -279,7 +279,7 @@ const BookingInterface = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column - Custom Calendar */}
-        <div>
+        <div className="order-1 lg:order-1">
           <CustomCalendar
             selectedDate={selectedDate}
             onDateSelect={setSelectedDate}
@@ -288,7 +288,7 @@ const BookingInterface = () => {
         </div>
 
         {/* Middle Column - Booking Form */}
-        <div className="card">
+        <div className="card order-3 lg:order-2">
           <div className="flex items-center mb-4">
             <CheckCircle className="h-5 w-5 text-primary-600 mr-2" />
             <h3 className="text-lg font-semibold text-gray-900">Booking Details</h3>
@@ -411,7 +411,7 @@ const BookingInterface = () => {
         </div>
 
         {/* Right Column - Time Slots */}
-        <div className="card">
+        <div className="card order-2 lg:order-3">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center">
               <Clock className="h-5 w-5 text-primary-600 mr-2" />
