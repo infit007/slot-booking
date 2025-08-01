@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { X, Download, CheckCircle } from 'lucide-react';
+import { X, Download, CheckCircle, RefreshCw } from 'lucide-react';
 import moment from 'moment';
+import { bookingAPI } from '../services/api';
+import { config } from '../config';
 
 const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
+  const [slotStatus, setSlotStatus] = useState({ available: 0, total: config.booking.maxSlotsPerDay });
+  const [isLoading, setIsLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const canvasRef = useRef(null);
+
   if (!isOpen || !bookingData) return null;
 
   // Create QR code data string
@@ -17,13 +24,118 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
     booking_id: bookingData.id || 'pending'
   });
 
-  const handleDownload = () => {
-    const canvas = document.querySelector('#qr-code-canvas');
-    if (canvas) {
-      const link = document.createElement('a');
-      link.download = `booking-qr-${bookingData.name}-${moment(bookingData.date).format('YYYY-MM-DD')}.png`;
-      link.href = canvas.toDataURL();
-      link.click();
+  // Fetch slot status
+  const fetchSlotStatus = async () => {
+    try {
+      setIsLoading(true);
+      const response = await bookingAPI.getSlotStatus();
+      const { availableSlots, totalBookings, maxSlots } = response.data;
+      
+      setSlotStatus({
+        available: availableSlots,
+        total: maxSlots
+      });
+    } catch (error) {
+      console.error('Error fetching slot status:', error);
+      // Fallback to default values
+      setSlotStatus({ available: 15, total: config.booking.maxSlotsPerDay });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch slot status on component mount and every 30 seconds
+  useEffect(() => {
+    if (isOpen) {
+      fetchSlotStatus();
+      const interval = setInterval(fetchSlotStatus, 30000); // Update every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isOpen]);
+
+  const handleDownload = async () => {
+    try {
+      setIsDownloading(true);
+      // Create a canvas element
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 400;
+      canvas.height = 500;
+
+      // Set background
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Get QR code SVG and convert to canvas
+      const qrSvg = document.querySelector('#qr-code-svg');
+      if (qrSvg) {
+        const svgData = new XMLSerializer().serializeToString(qrSvg);
+        const img = new Image();
+        
+        img.onload = () => {
+          // Draw QR code
+          ctx.drawImage(img, 100, 50, 200, 200);
+
+                     // Add company name overlay
+           ctx.fillStyle = '#1f2937';
+           ctx.font = 'bold 16px Arial';
+           ctx.textAlign = 'center';
+           ctx.fillText(config.company.name, canvas.width / 2, 280);
+
+          // Add "Book your slot" text
+          ctx.fillStyle = '#6b7280';
+          ctx.font = '14px Arial';
+          ctx.fillText('Book your slot', canvas.width / 2, 300);
+
+          // Add slot status
+          ctx.fillStyle = '#059669';
+          ctx.font = 'bold 18px Arial';
+          ctx.fillText(`Slots: ${slotStatus.available} / ${slotStatus.total} available`, canvas.width / 2, 330);
+
+          // Add booking details
+          ctx.fillStyle = '#374151';
+          ctx.font = '12px Arial';
+          ctx.textAlign = 'left';
+          ctx.fillText(`Name: ${bookingData.name}`, 50, 370);
+          ctx.fillText(`Date: ${moment(bookingData.date).format('MMMM D, YYYY')}`, 50, 385);
+          ctx.fillText(`Time: ${bookingData.time_slot}`, 50, 400);
+          ctx.fillText(`Purpose: ${bookingData.purpose}`, 50, 415);
+
+                               // Download the image
+          const link = document.createElement('a');
+          link.download = `booking-qr-${bookingData.name}-${moment(bookingData.date).format('YYYY-MM-DD')}.jpg`;
+          link.href = canvas.toDataURL('image/jpeg', config.qrCode.quality);
+          link.click();
+          setIsDownloading(false);
+        };
+
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+        
+        // Add error handling for image loading
+        img.onerror = () => {
+          console.error('Failed to load QR code SVG');
+                  // Fallback to original download method
+        const canvas = document.querySelector('#qr-code-canvas');
+        if (canvas) {
+          const link = document.createElement('a');
+          link.download = `booking-qr-${bookingData.name}-${moment(bookingData.date).format('YYYY-MM-DD')}.png`;
+          link.href = canvas.toDataURL();
+          link.click();
+        }
+        setIsDownloading(false);
+        };
+      }
+    } catch (error) {
+      console.error('Error generating QR code image:', error);
+      // Fallback to original download method
+      const canvas = document.querySelector('#qr-code-canvas');
+      if (canvas) {
+        const link = document.createElement('a');
+        link.download = `booking-qr-${bookingData.name}-${moment(bookingData.date).format('YYYY-MM-DD')}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+      }
+      setIsDownloading(false);
     }
   };
 
@@ -56,16 +168,48 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
           )}
         </div>
 
-        {/* QR Code */}
+        {/* QR Code with Company Name Overlay */}
         <div className="flex justify-center mb-6">
-          <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
+          <div className="bg-white p-4 rounded-lg border-2 border-gray-200 relative">
             <QRCodeSVG
-              id="qr-code-canvas"
+              id="qr-code-svg"
               value={qrData}
               size={200}
               level="M"
               includeMargin={true}
             />
+                         {/* Company name overlay */}
+             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+               <div className="bg-white bg-opacity-90 px-2 py-1 rounded">
+                 <p className="text-sm font-bold text-gray-800">{config.company.name}</p>
+                 <p className="text-xs text-gray-600">Book your slot</p>
+               </div>
+             </div>
+          </div>
+        </div>
+
+        {/* Live Slot Status */}
+        <div className="bg-blue-50 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-blue-900">Live Slot Status</h3>
+            <button
+              onClick={fetchSlotStatus}
+              disabled={isLoading}
+              className="text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          <div className="mt-2">
+            <p className="text-lg font-bold text-green-600">
+              Slots: {slotStatus.available} / {slotStatus.total} available
+            </p>
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+              <div 
+                className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(slotStatus.available / slotStatus.total) * 100}%` }}
+              ></div>
+            </div>
           </div>
         </div>
 
@@ -104,10 +248,20 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
         <div className="flex gap-3">
           <button
             onClick={handleDownload}
-            className="btn-secondary flex-1 flex items-center justify-center"
+            disabled={isDownloading}
+            className="btn-secondary flex-1 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Download className="h-4 w-4 mr-2" />
-            Download QR
+            {isDownloading ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Download QR (JPEG)
+              </>
+            )}
           </button>
           {isUserView && (
             <button

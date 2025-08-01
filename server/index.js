@@ -229,6 +229,51 @@ app.get('/api/slots/:date', (req, res) => {
   }
 });
 
+// Get overall slot statistics
+app.get('/api/slots/status/overall', (req, res) => {
+  const today = moment().format('YYYY-MM-DD');
+  
+  if (usePostgreSQL) {
+    // Get today's bookings count
+    pool.query('SELECT COUNT(*) as count FROM bookings WHERE date = $1', [today], (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      const totalBookings = parseInt(result.rows[0].count);
+      const maxSlots = 18; // 18 slots from 9 AM to 6 PM
+      const availableSlots = Math.max(0, maxSlots - totalBookings);
+      
+      res.json({
+        date: today,
+        availableSlots,
+        totalBookings,
+        maxSlots,
+        utilizationRate: ((totalBookings / maxSlots) * 100).toFixed(1)
+      });
+    });
+  } else {
+    // Get today's bookings count (SQLite)
+    db.get('SELECT COUNT(*) as count FROM bookings WHERE date = ?', [today], (err, row) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      const totalBookings = row.count;
+      const maxSlots = 18; // 18 slots from 9 AM to 6 PM
+      const availableSlots = Math.max(0, maxSlots - totalBookings);
+      
+      res.json({
+        date: today,
+        availableSlots,
+        totalBookings,
+        maxSlots,
+        utilizationRate: ((totalBookings / maxSlots) * 100).toFixed(1)
+      });
+    });
+  }
+});
+
 // Create a new booking
 app.post('/api/bookings', validateBooking, (req, res) => {
   const errors = validationResult(req);

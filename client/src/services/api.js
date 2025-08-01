@@ -52,6 +52,9 @@ export const bookingAPI = {
   // Get available slots for a specific date
   getSlots: (date) => api.get(`/slots/${date}`),
   
+  // Get overall slot status
+  getSlotStatus: () => api.get('/slots/status/overall'),
+  
   // Create a new booking
   createBooking: (bookingData) => api.post('/bookings', bookingData),
   
