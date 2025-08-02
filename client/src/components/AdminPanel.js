@@ -13,13 +13,26 @@ import {
   QrCode,
   Trash2,
   CheckSquare,
-  Square
+  Square,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import moment from 'moment';
 import 'react-datepicker/dist/react-datepicker.css';
 import QRCodeModal from './QRCodeModal';
 
 const AdminPanel = () => {
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginForm, setLoginForm] = useState({
+    username: '',
+    password: ''
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Admin panel state
   const [bookings, setBookings] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -31,6 +44,52 @@ const AdminPanel = () => {
   const [selectedBookings, setSelectedBookings] = useState([]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Default admin credentials
+  const DEFAULT_USERNAME = 'Slog_admin';
+  const DEFAULT_PASSWORD = 'slog5496@';
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    
+    try {
+      // Simple authentication check
+      if (loginForm.username === DEFAULT_USERNAME && loginForm.password === DEFAULT_PASSWORD) {
+        setIsAuthenticated(true);
+        toast.success('Login successful!');
+        // Store authentication in localStorage for persistence
+        localStorage.setItem('adminAuthenticated', 'true');
+      } else {
+        toast.error('Invalid username or password');
+      }
+    } catch (error) {
+      toast.error('Login failed');
+      console.error('Login error:', error);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('adminAuthenticated');
+    toast.success('Logged out successfully');
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setLoginForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Check if already authenticated on component mount
+  useEffect(() => {
+    const isAuth = localStorage.getItem('adminAuthenticated') === 'true';
+    setIsAuthenticated(isAuth);
+  }, []);
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -49,9 +108,11 @@ const AdminPanel = () => {
   }, [startDate, endDate]);
 
   useEffect(() => {
-    fetchBookings();
-    fetchStats();
-  }, [fetchBookings]);
+    if (isAuthenticated) {
+      fetchBookings();
+      fetchStats();
+    }
+  }, [fetchBookings, isAuthenticated]);
 
   const fetchStats = async () => {
     try {
@@ -167,13 +228,105 @@ const AdminPanel = () => {
     }
   };
 
+  // Login Form
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 bg-primary-600 rounded-full flex items-center justify-center">
+              <Lock className="h-6 w-6 text-white" />
+            </div>
+            <h2 className="mt-6 text-3xl font-bold text-gray-900">SLOG SOLUTIONS</h2>
+            <h3 className="mt-2 text-xl font-semibold text-gray-700">Admin Login</h3>
+            <p className="mt-2 text-sm text-gray-600">Enter your credentials to access the admin panel</p>
+          </div>
+          
+          <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                  Username
+                </label>
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  required
+                  value={loginForm.username}
+                  onChange={handleInputChange}
+                  className="mt-1 input-field"
+                  placeholder="Enter username"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <div className="mt-1 relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={loginForm.password}
+                    onChange={handleInputChange}
+                    className="input-field pr-10"
+                    placeholder="Enter password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5 text-gray-400" />
+                    ) : (
+                      <Eye className="h-5 w-5 text-gray-400" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="btn-primary w-full flex justify-center items-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoggingIn ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Logging in...
+                  </>
+                ) : (
+                  'Sign In'
+                )}
+              </button>
+            </div>
+
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Admin Dashboard
   return (
     <div className="max-w-7xl mx-auto">
-             <div className="text-center mb-8">
-         <h2 className="text-3xl font-bold text-gray-900 mb-2">SLOG SOLUTIONS</h2>
-         <h3 className="text-xl font-semibold text-gray-700 mb-2">Admin Dashboard</h3>
-         <p className="text-gray-600">Manage bookings and view statistics</p>
-       </div>
+      <div className="text-center mb-8">
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">SLOG SOLUTIONS</h2>
+        <h3 className="text-xl font-semibold text-gray-700 mb-2">Admin Dashboard</h3>
+        <p className="text-gray-600">Manage bookings and view statistics</p>
+        <button
+          onClick={handleLogout}
+          className="mt-4 btn-secondary text-sm"
+        >
+          Logout
+        </button>
+      </div>
 
       {/* Statistics Cards */}
       {stats && (
