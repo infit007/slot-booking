@@ -88,8 +88,8 @@ const AdminPanel = () => {
 
   const filteredBookings = bookings.filter(booking =>
     booking.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (booking.email && booking.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    booking.purpose.toLowerCase().includes(searchTerm.toLowerCase())
+    booking.purpose.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    booking.location.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const clearFilters = () => {
@@ -266,7 +266,7 @@ const AdminPanel = () => {
           <Search className="h-5 w-5 text-gray-400 mr-3" />
           <input
             type="text"
-                         placeholder="Search by name, email (if provided), or purpose..."
+                         placeholder="Search by name, purpose, or location..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="input-field flex-1"
@@ -328,21 +328,24 @@ const AdminPanel = () => {
                       )}
                     </button>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Contact
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date & Time
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Purpose
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created
-                  </th>
+                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Name
+                   </th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Phone
+                   </th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Date & Time
+                   </th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Purpose
+                   </th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Created
+                   </th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Location
+                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
@@ -366,42 +369,47 @@ const AdminPanel = () => {
                          )}
                        </button>
                      </td>
-                     <td 
-                       className="px-6 py-4 whitespace-nowrap cursor-pointer"
-                       onClick={() => handleShowQRCode(booking)}
-                     >
-                       <div className="text-sm font-medium text-gray-900">{booking.name}</div>
-                     </td>
-                     <td 
-                       className="px-6 py-4 whitespace-nowrap cursor-pointer"
-                       onClick={() => handleShowQRCode(booking)}
-                     >
-                       <div className="text-sm text-gray-900">{booking.email || 'Not provided'}</div>
-                       <div className="text-sm text-gray-500">{booking.phone}</div>
-                     </td>
-                     <td 
-                       className="px-6 py-4 whitespace-nowrap cursor-pointer"
-                       onClick={() => handleShowQRCode(booking)}
-                     >
-                       <div className="text-sm text-gray-900">
-                         {moment(booking.date).format('MMM D, YYYY')}
-                       </div>
-                       <div className="text-sm text-gray-500">{booking.time_slot}</div>
-                     </td>
-                     <td 
-                       className="px-6 py-4 cursor-pointer"
-                       onClick={() => handleShowQRCode(booking)}
-                     >
-                       <div className="text-sm text-gray-900 max-w-xs truncate">
-                         {booking.purpose}
-                       </div>
-                     </td>
-                     <td 
-                       className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer"
-                       onClick={() => handleShowQRCode(booking)}
-                     >
-                       {moment(booking.created_at).format('MMM D, YYYY HH:mm')}
-                     </td>
+                                           <td 
+                        className="px-6 py-4 whitespace-nowrap cursor-pointer"
+                        onClick={() => handleShowQRCode(booking)}
+                      >
+                        <div className="text-sm font-medium text-gray-900">{booking.name}</div>
+                      </td>
+                      <td 
+                        className="px-6 py-4 whitespace-nowrap cursor-pointer"
+                        onClick={() => handleShowQRCode(booking)}
+                      >
+                        <div className="text-sm text-gray-900">{booking.phone}</div>
+                      </td>
+                      <td 
+                        className="px-6 py-4 whitespace-nowrap cursor-pointer"
+                        onClick={() => handleShowQRCode(booking)}
+                      >
+                        <div className="text-sm text-gray-900">
+                          {moment(booking.date).format('MMM D, YYYY')}
+                        </div>
+                        <div className="text-sm text-gray-500">{booking.time_slot}</div>
+                      </td>
+                      <td 
+                        className="px-6 py-4 cursor-pointer"
+                        onClick={() => handleShowQRCode(booking)}
+                      >
+                        <div className="text-sm text-gray-900 max-w-xs truncate">
+                          {booking.purpose}
+                        </div>
+                      </td>
+                      <td 
+                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer"
+                        onClick={() => handleShowQRCode(booking)}
+                      >
+                        {moment(booking.created_at).format('MMM D, YYYY HH:mm')}
+                      </td>
+                      <td 
+                        className="px-6 py-4 whitespace-nowrap cursor-pointer"
+                        onClick={() => handleShowQRCode(booking)}
+                      >
+                        <div className="text-sm text-gray-900">{booking.location}</div>
+                      </td>
                      <td className="px-6 py-4 whitespace-nowrap">
                        <div className="flex items-center gap-2">
                          <button

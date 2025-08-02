@@ -53,12 +53,15 @@ export const bookingAPI = {
   getSlots: (date) => api.get(`/slots/${date}`),
   
   // Get overall slot status
-  getSlotStatus: () => api.get('/slots/status/overall'),
+  getSlotStatus: (date) => {
+    const params = {};
+    if (date) params.date = date;
+    return api.get('/slots/status/overall', { params });
+  },
   
   // Check weekly booking status
-  checkWeeklyStatus: (email, phone, date) => {
+  checkWeeklyStatus: (phone, date) => {
     const params = { phone };
-    if (email) params.email = email;
     if (date) params.date = date;
     return api.get('/user/weekly-status', { params });
   },

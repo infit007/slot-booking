@@ -94,9 +94,9 @@ function initDatabase() {
     CREATE TABLE IF NOT EXISTS bookings (
       id SERIAL PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
-      email VARCHAR(255),
       phone VARCHAR(20) NOT NULL,
-      purpose TEXT NOT NULL,
+      purpose VARCHAR(255) NOT NULL,
+      location VARCHAR(255) NOT NULL,
       date DATE NOT NULL,
       time_slot TIME NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -113,25 +113,12 @@ function initDatabase() {
 }
 
 // Helper function to check weekly booking restriction
-const checkWeeklyBookingRestriction = (email, phone, slotDate, callback) => {
-  let query = '';
-  let params = [];
-  
-  if (email) {
-    // Check by email (case-insensitive) or phone
-    query = `SELECT COUNT(*) AS count
-             FROM bookings
-             WHERE (LOWER(email) = LOWER($1) OR phone = $2)
-               AND date_trunc('week', date) = date_trunc('week', $3::date)`;
-    params = [email, phone, slotDate];
-  } else {
-    // Check by phone only if no email
-    query = `SELECT COUNT(*) AS count
-             FROM bookings
-             WHERE phone = $1
-               AND date_trunc('week', date) = date_trunc('week', $2::date)`;
-    params = [phone, slotDate];
-  }
+const checkWeeklyBookingRestriction = (phone, slotDate, callback) => {
+  const query = `SELECT COUNT(*) AS count
+                 FROM bookings
+                 WHERE phone = $1
+                   AND date_trunc('week', date) = date_trunc('week', $2::date)`;
+  const params = [phone, slotDate];
   
   pool.query(query, params, callback);
 };
@@ -139,9 +126,9 @@ const checkWeeklyBookingRestriction = (email, phone, slotDate, callback) => {
 // Validation middleware
 const validateBooking = [
   body('name').trim().isLength({ min: 2, max: 255 }).withMessage('Name must be between 2 and 255 characters long').escape(),
-  body('email').optional({ checkFalsy: true }).isEmail().normalizeEmail().withMessage('Must be a valid email').escape(),
   body('phone').matches(/^[\+]?[1-9][\d]{0,15}$/).withMessage('Must be a valid phone number').escape(),
-  body('purpose').trim().isLength({ min: 5, max: 1000 }).withMessage('Purpose must be between 5 and 1000 characters long').escape(),
+  body('purpose').trim().notEmpty().withMessage('Purpose is required').escape(),
+  body('location').trim().notEmpty().withMessage('Location is required').escape(),
   body('date').isISO8601().withMessage('Must be a valid date'),
   body('time_slot').matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Must be a valid time slot')
 ];
@@ -189,16 +176,16 @@ app.get('/api/slots/:date', (req, res) => {
     // Calculate slot status for each time slot
     const slotStatus = timeSlots.map(slot => {
       const bookingCount = slotBookings[slot] || 0;
-      const isAvailable = bookingCount < 100;
-      const isFullyBooked = bookingCount >= 100;
+      const isAvailable = bookingCount < 120;
+      const isFullyBooked = bookingCount >= 120;
       
       return {
         time: slot,
         bookingCount: bookingCount,
-        maxCapacity: 100,
+        maxCapacity: 120,
         isAvailable: isAvailable,
         isFullyBooked: isFullyBooked,
-        availableSpots: Math.max(0, 100 - bookingCount)
+        availableSpots: Math.max(0, 120 - bookingCount)
       };
     });
 
@@ -229,14 +216,14 @@ app.get('/api/slots/:date', (req, res) => {
 
 // Check if user has already booked this week
 app.get('/api/user/weekly-status', (req, res) => {
-  const { email, phone, date } = req.query;
+  const { phone, date } = req.query;
   
   if (!phone) {
     return res.status(400).json({ error: 'Phone number is required' });
   }
   
   const slotDate = date && moment(date, 'YYYY-MM-DD', true).isValid() ? date : moment().format('YYYY-MM-DD');
-  checkWeeklyBookingRestriction(email, phone, slotDate, (err, result) => {
+  checkWeeklyBookingRestriction(phone, slotDate, (err, result) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
@@ -257,10 +244,11 @@ app.get('/api/user/weekly-status', (req, res) => {
 
 // Get overall slot statistics
 app.get('/api/slots/status/overall', (req, res) => {
-  const today = moment().format('YYYY-MM-DD');
+  const { date } = req.query;
+  const targetDate = date && moment(date, 'YYYY-MM-DD', true).isValid() ? date : moment().format('YYYY-MM-DD');
   
-  // Get today's bookings count
-  pool.query('SELECT COUNT(*) as count FROM bookings WHERE date = $1', [today], (err, result) => {
+  // Get bookings count for the specified date
+  pool.query('SELECT COUNT(*) as count FROM bookings WHERE date = $1', [targetDate], (err, result) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
@@ -270,7 +258,7 @@ app.get('/api/slots/status/overall', (req, res) => {
     const availableSlots = Math.max(0, maxSlots - totalBookings);
     
     res.json({
-      date: today,
+      date: targetDate,
       availableSlots,
       totalBookings,
       maxSlots,
@@ -286,10 +274,7 @@ app.post('/api/bookings', validateBooking, (req, res) => {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { name, email, phone, purpose, date, time_slot } = req.body;
-  
-  // Handle optional email - convert empty string to null
-  const emailValue = email && email.trim() !== '' ? email : null;
+  const { name, phone, purpose, location, date, time_slot } = req.body;
 
     // Check if slot has capacity
   pool.query('SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND time_slot = $2', [date, time_slot], (err, result) => {
@@ -298,12 +283,12 @@ app.post('/api/bookings', validateBooking, (req, res) => {
     }
 
     const currentBookings = parseInt(result.rows[0].count);
-    if (currentBookings >= 100) {
-      return res.status(409).json({ error: 'This time slot is fully booked (100/100 capacity reached)' });
+    if (currentBookings >= 120) {
+      return res.status(409).json({ error: 'This time slot is fully booked (120/120 capacity reached)' });
     }
 
     // Check weekly booking restriction (one booking per week per user)
-    checkWeeklyBookingRestriction(emailValue, phone, date, (err, result) => {
+    checkWeeklyBookingRestriction(phone, date, (err, result) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
@@ -325,8 +310,8 @@ app.post('/api/bookings', validateBooking, (req, res) => {
 
               // Create booking
         pool.query(
-          'INSERT INTO bookings (name, email, phone, purpose, date, time_slot) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-          [name, emailValue, phone, purpose, date, time_slot],
+          'INSERT INTO bookings (name, phone, purpose, location, date, time_slot) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+          [name, phone, purpose, location, date, time_slot],
           (err, result) => {
             if (err) {
               return res.status(500).json({ error: 'Failed to create booking' });
@@ -335,7 +320,7 @@ app.post('/api/bookings', validateBooking, (req, res) => {
             res.status(201).json({
               id: result.rows[0].id,
               message: 'Booking created successfully',
-              booking: { name, email: emailValue, phone, purpose, date, time_slot }
+              booking: { name, phone, purpose, location, date, time_slot }
             });
           }
         );
@@ -460,9 +445,9 @@ app.get('/api/admin/export', (req, res) => {
     const excelData = result.rows.map(row => ({
       'ID': row.id,
       'Name': row.name,
-      'Email': row.email,
       'Phone': row.phone,
       'Purpose': row.purpose,
+      'Location': row.location,
       'Date': row.date,
       'Time Slot': row.time_slot,
       'Created At': row.created_at

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { bookingAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
-import { Clock, User, Mail, Phone, FileText, CheckCircle, RefreshCw } from 'lucide-react';
+import { Clock, User, Phone, FileText, MapPin, CheckCircle, RefreshCw } from 'lucide-react';
 import moment from 'moment';
 import CustomCalendar from './CustomCalendar';
 import QRCodeModal from './QRCodeModal';
@@ -9,14 +9,18 @@ import { config } from '../config';
 
 const BookingInterface = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // Add a ref to track the current selectedDate
+  const selectedDateRef = React.useRef(selectedDate);
+  selectedDateRef.current = selectedDate;
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [slotsData, setSlotsData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [bookingForm, setBookingForm] = useState({
     name: '',
-    email: '',
     phone: '',
-    purpose: ''
+    purpose: '',
+    location: ''
   });
   const [isBooking, setIsBooking] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -30,7 +34,8 @@ const BookingInterface = () => {
   const fetchLiveSlotStatus = async () => {
     try {
       setIsLoadingSlotStatus(true);
-      const response = await bookingAPI.getSlotStatus();
+      const selectedDateStr = moment(selectedDate).format('YYYY-MM-DD');
+      const response = await bookingAPI.getSlotStatus(selectedDateStr);
       const { availableSlots, maxSlots } = response.data;
       
       setLiveSlotStatus({
@@ -50,15 +55,19 @@ const BookingInterface = () => {
   useEffect(() => {
     if (selectedDate) {
       fetchSlots(moment(selectedDate).format('YYYY-MM-DD'));
+      // Clear selected slot when date changes to prevent stale data
+      setSelectedSlot(null);
     }
   }, [selectedDate]);
 
-  // Fetch live slot status on component mount and every 30 seconds
+  // Fetch live slot status on component mount, when date changes, and every 30 seconds
   useEffect(() => {
-    fetchLiveSlotStatus();
-    const interval = setInterval(fetchLiveSlotStatus, 30000); // Update every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
+    if (selectedDate) {
+      fetchLiveSlotStatus();
+      const interval = setInterval(fetchLiveSlotStatus, 30000); // Update every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [selectedDate]);
 
   // Refresh slots data every 30 seconds to update booking status
   useEffect(() => {
@@ -74,24 +83,22 @@ const BookingInterface = () => {
     setLoading(true);
     try {
       const response = await bookingAPI.getSlots(date);
-      console.log('Frontend received slots data:', response.data);
       
-             // Ensure allSlots exists, use fixed 10 slots if missing
-       let slotsData = response.data;
-       if (!slotsData.allSlots || slotsData.allSlots.length === 0) {
-         const timeSlots = [
-           '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
-           '12:00', '15:00', '15:30', '16:00'
-         ];
-         
-         slotsData = {
-           ...slotsData,
-           allSlots: timeSlots
-         };
-       }
+      // Ensure allSlots exists, use fixed 10 slots if missing
+      let slotsData = response.data;
+      if (!slotsData.allSlots || slotsData.allSlots.length === 0) {
+        const timeSlots = [
+          '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
+          '12:00', '15:00', '15:30', '16:00'
+        ];
+        
+        slotsData = {
+          ...slotsData,
+          allSlots: timeSlots
+        };
+      }
       
       setSlotsData(slotsData);
-      setSelectedSlot(null); // Reset selected slot when date changes
     } catch (error) {
       toast.error('Failed to fetch available slots');
       console.error('Error fetching slots:', error);
@@ -112,25 +119,24 @@ const BookingInterface = () => {
       [name]: value
     }));
     
-    // Check weekly booking status when phone or email changes
-    if (name === 'phone' || name === 'email') {
-      const phone = name === 'phone' ? value : bookingForm.phone;
-      const email = name === 'email' ? value : bookingForm.email;
+    // Check weekly booking status when phone changes
+    if (name === 'phone') {
+      const phone = value;
       
       if (phone && phone.trim()) {
-        checkWeeklyBookingStatus(email || null, phone, moment(selectedDate).format('YYYY-MM-DD'));
+        checkWeeklyBookingStatus(phone, moment(selectedDate).format('YYYY-MM-DD'));
       } else {
         setWeeklyBookingStatus(null);
       }
     }
   };
 
-  const checkWeeklyBookingStatus = async (email, phone, date) => {
+  const checkWeeklyBookingStatus = async (phone, date) => {
     if (!phone || !phone.trim()) return;
     
     setIsCheckingWeeklyStatus(true);
     try {
-      const response = await bookingAPI.checkWeeklyStatus(email, phone, date);
+      const response = await bookingAPI.checkWeeklyStatus(phone, date);
       setWeeklyBookingStatus(response.data);
     } catch (error) {
       console.error('Error checking weekly booking status:', error);
@@ -149,18 +155,9 @@ const BookingInterface = () => {
     }
 
     // Validate form fields
-    if (!bookingForm.name.trim() || !bookingForm.phone.trim() || !bookingForm.purpose.trim()) {
+    if (!bookingForm.name.trim() || !bookingForm.phone.trim() || !bookingForm.purpose.trim() || !bookingForm.location.trim()) {
       toast.error('Please fill in all required fields');
       return;
-    }
-
-    // Validate email format if provided
-    if (bookingForm.email.trim()) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(bookingForm.email)) {
-        toast.error('Please enter a valid email address');
-        return;
-      }
     }
 
     // Validate phone number
@@ -173,8 +170,8 @@ const BookingInterface = () => {
     // Check weekly booking restriction
     try {
       const weeklyStatusResponse = await bookingAPI.checkWeeklyStatus(
-        bookingForm.email || null, 
-        bookingForm.phone
+        bookingForm.phone,
+        moment(selectedDate).format('YYYY-MM-DD')
       );
       
       if (weeklyStatusResponse.data.hasBookedThisWeek) {
@@ -188,19 +185,15 @@ const BookingInterface = () => {
 
     setIsBooking(true);
     try {
-      // Prepare booking data, exclude email if it's empty
+      // Prepare booking data
       const bookingData = {
         name: bookingForm.name,
         phone: bookingForm.phone,
         purpose: bookingForm.purpose,
+        location: bookingForm.location,
         date: moment(selectedDate).format('YYYY-MM-DD'),
         time_slot: selectedSlot
       };
-      
-      // Only add email if it's not empty
-      if (bookingForm.email && bookingForm.email.trim() !== '') {
-        bookingData.email = bookingForm.email;
-      }
 
       const response = await bookingAPI.createBooking(bookingData);
       toast.success('Booking created successfully!');
@@ -208,7 +201,6 @@ const BookingInterface = () => {
       // Set booking confirmation data for QR code
       setBookingConfirmation({
         ...bookingData,
-        email: bookingForm.email || '', // Include email for QR code display
         id: response.data.id || Date.now() // Use response ID or fallback
       });
       setShowQRModal(true);
@@ -216,9 +208,9 @@ const BookingInterface = () => {
       // Reset form
       setBookingForm({
         name: '',
-        email: '',
         phone: '',
-        purpose: ''
+        purpose: '',
+        location: ''
       });
       setSelectedSlot(null);
       
@@ -250,7 +242,7 @@ const BookingInterface = () => {
         {/* Live Slot Status */}
         <div className="mt-4 bg-blue-50 rounded-lg p-4 max-w-md mx-auto">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-blue-900 text-sm">Live Slot Status</h3>
+            <h3 className="font-semibold text-blue-900 text-sm">Daily Booking Status</h3>
             <button
               onClick={fetchLiveSlotStatus}
               disabled={isLoadingSlotStatus}
@@ -262,12 +254,12 @@ const BookingInterface = () => {
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-green-600">
-              {liveSlotStatus.available} / {liveSlotStatus.total} booking slots available
+              {slotsData ? (1000 - slotsData.totalBookings) : liveSlotStatus.available} / {slotsData ? 1000 : liveSlotStatus.total} are available
             </p>
             <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
               <div 
                 className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${(liveSlotStatus.available / liveSlotStatus.total) * 100}%` }}
+                style={{ width: `${slotsData ? ((1000 - slotsData.totalBookings) / 1000) * 100 : (liveSlotStatus.available / liveSlotStatus.total) * 100}%` }}
               ></div>
             </div>
             <p className="text-xs text-gray-500 mt-1">
@@ -295,7 +287,7 @@ const BookingInterface = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
+                        <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 <User className="h-4 w-4 inline mr-1" />
                 Full Name
@@ -313,87 +305,105 @@ const BookingInterface = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                <Mail className="h-4 w-4 inline mr-1" />
-                Email Address
+                <Phone className="h-4 w-4 inline mr-1" />
+                Phone Number
               </label>
-                             <input
-                 type="email"
-                 name="email"
-                 value={bookingForm.email}
-                 onChange={handleInputChange}
-                 className="input-field"
-                 placeholder="Enter your email (optional)"
-               />
+              <input
+                type="tel"
+                name="phone"
+                value={bookingForm.phone}
+                onChange={handleInputChange}
+                className="input-field"
+                placeholder="Enter your phone number"
+                required
+              />
+              
+              {/* Weekly Booking Status */}
+              {isCheckingWeeklyStatus && (
+                <div className="mt-2 text-sm text-blue-600">
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                    Checking weekly booking status...
+                  </div>
+                </div>
+              )}
+              
+              {weeklyBookingStatus && !isCheckingWeeklyStatus && (
+                <div className={`mt-2 p-2 rounded-md text-sm ${
+                  weeklyBookingStatus.hasBookedThisWeek 
+                    ? 'bg-red-50 text-red-700 border border-red-200' 
+                    : 'bg-green-50 text-green-700 border border-green-200'
+                }`}>
+                  <div className="flex items-center">
+                    {weeklyBookingStatus.hasBookedThisWeek ? (
+                      <>
+                        <span className="text-red-500 mr-1">⚠️</span>
+                        <span>You have already booked a slot this week</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-green-500 mr-1">✅</span>
+                        <span>You can book a slot this week</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-
-                         <div>
-               <label className="block text-sm font-medium text-gray-700 mb-1">
-                 <Phone className="h-4 w-4 inline mr-1" />
-                 Phone Number
-               </label>
-               <input
-                 type="tel"
-                 name="phone"
-                 value={bookingForm.phone}
-                 onChange={handleInputChange}
-                 className="input-field"
-                 placeholder="Enter your phone number"
-                 required
-               />
-               
-               {/* Weekly Booking Status */}
-               {isCheckingWeeklyStatus && (
-                 <div className="mt-2 text-sm text-blue-600">
-                   <div className="flex items-center">
-                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                     Checking weekly booking status...
-                   </div>
-                 </div>
-               )}
-               
-               {weeklyBookingStatus && !isCheckingWeeklyStatus && (
-                 <div className={`mt-2 p-2 rounded-md text-sm ${
-                   weeklyBookingStatus.hasBookedThisWeek 
-                     ? 'bg-red-50 text-red-700 border border-red-200' 
-                     : 'bg-green-50 text-green-700 border border-green-200'
-                 }`}>
-                   <div className="flex items-center">
-                     {weeklyBookingStatus.hasBookedThisWeek ? (
-                       <>
-                         <span className="text-red-500 mr-1">⚠️</span>
-                         <span>You have already booked a slot this week</span>
-                       </>
-                     ) : (
-                       <>
-                         <span className="text-green-500 mr-1">✅</span>
-                         <span>You can book a slot this week</span>
-                       </>
-                     )}
-                   </div>
-                 </div>
-               )}
-             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 <FileText className="h-4 w-4 inline mr-1" />
                 Purpose of Visit
               </label>
-              <textarea
+              <select
                 name="purpose"
                 value={bookingForm.purpose}
                 onChange={handleInputChange}
                 className="input-field"
-                rows="3"
-                placeholder="Please describe the purpose of your visit"
                 required
-              />
+              >
+                <option value="" disabled>Select purpose</option>
+                <option value="Liquor">Liquor</option>
+                <option value="Grocery">Grocery</option>
+                <option value="Both">Both (Liquor and Grocery)</option>
+              </select>
             </div>
 
-            {selectedSlot && (
-              <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                <MapPin className="h-4 w-4 inline mr-1" />
+                Location
+              </label>
+              <select
+                name="location"
+                value={bookingForm.location}
+                onChange={handleInputChange}
+                className="input-field"
+                required
+              >
+                <option value="" disabled>Select location</option>
+                <option value="Almora">Almora</option>
+                <option value="Bageshwar">Bageshwar</option>
+                <option value="Chamoli">Chamoli</option>
+                <option value="Champawat">Champawat</option>
+                <option value="Dehradun">Dehradun</option>
+                <option value="Haridwar">Haridwar</option>
+                <option value="Nainital">Nainital</option>
+                <option value="Pauri Garhwal">Pauri Garhwal</option>
+                <option value="Pithoragarh">Pithoragarh</option>
+                <option value="Rudraprayag">Rudraprayag</option>
+                <option value="Tehri Garhwal">Tehri Garhwal</option>
+                <option value="Uttarkashi">Uttarkashi</option>
+                <option value="Udham Singh Nagar">Udham Singh Nagar</option>
+                <option value="Others">Others</option>
+              </select>
+            </div>
+
+            {selectedSlot && selectedDateRef.current && (
+              <div className="bg-primary-50 border border-primary-200 rounded-lg p-4" key={`slot-${selectedDateRef.current.getTime()}-${selectedSlot}`}>
                 <p className="text-sm text-primary-800">
-                  <strong>Selected Slot:</strong> {moment(selectedDate).format('MMMM d, YYYY')} at {selectedSlot}
+                  <strong>Selected Slot:</strong> {selectedDateRef.current.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} at {selectedSlot}
                 </p>
               </div>
             )}
@@ -419,7 +429,7 @@ const BookingInterface = () => {
             </div>
                          {slotsData && (
                <div className="text-sm text-gray-500">
-                 {slotsData.totalBookings}/1000 total • {slotsData.availableSlots.length} time slots available
+                 {1000 - slotsData.totalBookings}/1000 available • {slotsData.availableSlots.length} slots open
                </div>
              )}
           </div>
@@ -435,13 +445,7 @@ const BookingInterface = () => {
                  const isFullyBooked = slotInfo.isFullyBooked;
                  const isAvailable = slotInfo.isAvailable;
                  
-                 // Debug logging for slot status
-                 console.log(`Slot ${slotInfo.time}:`, { 
-                   bookingCount: slotInfo.bookingCount, 
-                   isFullyBooked, 
-                   isAvailable, 
-                   isSelected 
-                 });
+
                  
                  if (isFullyBooked) {
                    return (
@@ -452,7 +456,7 @@ const BookingInterface = () => {
                      >
                        <span className="font-bold">{slotInfo.time}</span>
                        <span className="text-xs opacity-75">Fully Booked</span>
-                       <span className="text-xs opacity-75">{slotInfo.bookingCount}/100</span>
+                       <span className="text-xs opacity-75">0/120 available</span>
                      </div>
                    );
                  } else {
@@ -468,7 +472,7 @@ const BookingInterface = () => {
                        title={`${slotInfo.availableSpots} spots available`}
                      >
                        <span className="font-bold">{slotInfo.time}</span>
-                       <span className="text-xs opacity-75">{slotInfo.bookingCount}/100</span>
+                       <span className="text-xs opacity-75">{120 - slotInfo.bookingCount}/120 available</span>
                      </button>
                    );
                  }

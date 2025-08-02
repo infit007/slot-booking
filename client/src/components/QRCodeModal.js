@@ -10,12 +10,13 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // Fetch slot status
+    // Fetch slot status
   const fetchSlotStatus = async () => {
     try {
       setIsLoading(true);
-             const response = await bookingAPI.getSlotStatus();
-       const { availableSlots, maxSlots } = response.data;
+      const selectedDateStr = moment(bookingData.date).format('YYYY-MM-DD');
+      const response = await bookingAPI.getSlotStatus(selectedDateStr);
+      const { availableSlots, maxSlots } = response.data;
       
       setSlotStatus({
         available: availableSlots,
@@ -44,23 +45,33 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
 
   // Create QR code data string (after null check)
   const qrData = JSON.stringify({
+    booking_id: bookingData.id || 'pending',
     name: bookingData.name,
-    email: bookingData.email || '',
     phone: bookingData.phone,
     date: bookingData.date,
     time_slot: bookingData.time_slot,
     purpose: bookingData.purpose,
-    booking_id: bookingData.id || 'pending'
-  });
+    location: bookingData.location,
+    created_at: bookingData.created_at || new Date().toISOString(),
+    company: config.company.name,
+    qr_generated_at: new Date().toISOString(),
+    booking_status: 'confirmed'
+  }, null, 2); // Pretty print JSON with 2-space indentation
 
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
-      // Create a canvas element
+      // Create a high-resolution canvas element
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      canvas.width = 400;
-      canvas.height = 500;
+      
+      // Increase resolution by 3x for better quality
+      const scale = 3;
+      canvas.width = 400 * scale;
+      canvas.height = 500 * scale;
+      
+      // Scale the context to match the high resolution
+      ctx.scale(scale, scale);
 
       // Set background
       ctx.fillStyle = 'white';
@@ -76,37 +87,38 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
           // Draw QR code
           ctx.drawImage(img, 100, 50, 200, 200);
 
-                     // Add company name overlay
-           ctx.fillStyle = '#1f2937';
-           ctx.font = 'bold 16px Arial';
-           ctx.textAlign = 'center';
-           ctx.fillText(config.company.name, canvas.width / 2, 280);
+                                // Add company name overlay
+            ctx.fillStyle = '#1f2937';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(config.company.name, 200, 280);
+ 
+           // Add "Book your slot" text
+           ctx.fillStyle = '#6b7280';
+           ctx.font = '14px Arial';
+           ctx.fillText('Book your slot', 200, 300);
+ 
+           // Add slot status
+           ctx.fillStyle = '#059669';
+           ctx.font = 'bold 18px Arial';
+           ctx.fillText(`Slots: ${slotStatus.available} / ${slotStatus.total} available`, 200, 330);
 
-          // Add "Book your slot" text
-          ctx.fillStyle = '#6b7280';
-          ctx.font = '14px Arial';
-          ctx.fillText('Book your slot', canvas.width / 2, 300);
+                     // Add booking details
+           ctx.fillStyle = '#374151';
+           ctx.font = '12px Arial';
+           ctx.textAlign = 'left';
+           ctx.fillText(`Name: ${bookingData.name}`, 50, 370);
+           ctx.fillText(`Date: ${moment(bookingData.date).format('MMMM D, YYYY')}`, 50, 385);
+           ctx.fillText(`Time: ${bookingData.time_slot}`, 50, 400);
+           ctx.fillText(`Purpose: ${bookingData.purpose}`, 50, 415);
+           ctx.fillText(`Location: ${bookingData.location}`, 50, 430);
 
-          // Add slot status
-          ctx.fillStyle = '#059669';
-          ctx.font = 'bold 18px Arial';
-          ctx.fillText(`Slots: ${slotStatus.available} / ${slotStatus.total} available`, canvas.width / 2, 330);
-
-          // Add booking details
-          ctx.fillStyle = '#374151';
-          ctx.font = '12px Arial';
-          ctx.textAlign = 'left';
-          ctx.fillText(`Name: ${bookingData.name}`, 50, 370);
-          ctx.fillText(`Date: ${moment(bookingData.date).format('MMMM D, YYYY')}`, 50, 385);
-          ctx.fillText(`Time: ${bookingData.time_slot}`, 50, 400);
-          ctx.fillText(`Purpose: ${bookingData.purpose}`, 50, 415);
-
-                               // Download the image
-          const link = document.createElement('a');
-          link.download = `booking-qr-${bookingData.name}-${moment(bookingData.date).format('YYYY-MM-DD')}.jpg`;
-          link.href = canvas.toDataURL('image/jpeg', config.qrCode.quality);
-          link.click();
-          setIsDownloading(false);
+                                                               // Download the high-resolution image
+           const link = document.createElement('a');
+           link.download = `booking-qr-${bookingData.name}-${moment(bookingData.date).format('YYYY-MM-DD')}.jpg`;
+           link.href = canvas.toDataURL('image/jpeg', 0.95); // Increased quality to 95%
+           link.click();
+           setIsDownloading(false);
         };
 
         img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
@@ -171,13 +183,13 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
         {/* QR Code with Company Name Overlay */}
         <div className="flex justify-center mb-6">
           <div className="bg-white p-4 rounded-lg border-2 border-gray-200 relative">
-            <QRCodeSVG
-              id="qr-code-svg"
-              value={qrData}
-              size={200}
-              level="M"
-              includeMargin={true}
-            />
+                         <QRCodeSVG
+               id="qr-code-svg"
+               value={qrData}
+               size={300}
+               level="H"
+               includeMargin={true}
+             />
                          {/* Company name overlay */}
              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                <div className="bg-white bg-opacity-90 px-2 py-1 rounded">
@@ -222,8 +234,8 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
               <span className="font-medium">{bookingData.name}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Email:</span>
-              <span className="font-medium">{bookingData.email || 'Not provided'}</span>
+              <span className="text-gray-600">Location:</span>
+              <span className="font-medium">{bookingData.location}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Phone:</span>
