@@ -152,8 +152,8 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-md w-full p-6 relative">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 relative max-h-[90vh] overflow-y-auto">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -182,13 +182,14 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
 
         {/* QR Code with Company Name Overlay */}
         <div className="flex justify-center mb-6">
-          <div className="bg-white p-4 rounded-lg border-2 border-gray-200 relative">
+          <div className="bg-white p-2 sm:p-4 rounded-lg border-2 border-gray-200 relative">
                          <QRCodeSVG
                id="qr-code-svg"
                value={qrData}
-               size={300}
+               size={250}
                level="H"
                includeMargin={true}
+               className="sm:w-[300px] sm:h-[300px] w-[250px] h-[250px]"
              />
                          {/* Company name overlay */}
              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -257,7 +258,7 @@ const QRCodeModal = ({ isOpen, onClose, bookingData, isUserView = false }) => {
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={handleDownload}
             disabled={isDownloading}
