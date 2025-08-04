@@ -498,6 +498,25 @@ app.get('/api/admin/stats', (req, res) => {
   });
 });
 
+// Root route handler
+app.get('/', (req, res) => {
+  res.json({
+    message: 'SLOG SOLUTIONS Slot Booking API',
+    status: 'Server is running',
+    endpoints: {
+      health: '/api/health',
+      slots: '/api/slots/:date',
+      bookings: '/api/bookings',
+      admin: {
+        bookings: '/api/admin/bookings',
+        stats: '/api/admin/stats',
+        export: '/api/admin/export'
+      }
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Remove static file serving - this is a backend-only deployment
 // if (process.env.NODE_ENV === 'production') {
 //   app.use(express.static(path.join(__dirname, '../client/build')));

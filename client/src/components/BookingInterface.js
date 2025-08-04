@@ -254,12 +254,12 @@ const BookingInterface = () => {
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-green-600">
-              {slotsData ? (1000 - slotsData.totalBookings) : liveSlotStatus.available} / {slotsData ? 1000 : liveSlotStatus.total} are available
+              {slotsData ? (1200 - slotsData.totalBookings) : liveSlotStatus.available} / {slotsData ? 1200 : liveSlotStatus.total} are available
             </p>
             <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
               <div 
                 className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${slotsData ? ((1000 - slotsData.totalBookings) / 1000) * 100 : (liveSlotStatus.available / liveSlotStatus.total) * 100}%` }}
+                style={{ width: `${slotsData ? ((1200 - slotsData.totalBookings) / 1200) * 100 : (liveSlotStatus.available / liveSlotStatus.total) * 100}%` }}
               ></div>
             </div>
             <p className="text-xs text-gray-500 mt-1">
@@ -429,7 +429,7 @@ const BookingInterface = () => {
             </div>
                          {slotsData && (
                <div className="text-sm text-gray-500">
-                 {1000 - slotsData.totalBookings}/1000 available • {slotsData.availableSlots.length} slots open
+                 {1200 - slotsData.totalBookings}/1200 available • {slotsData.availableSlots.length} slots open
                </div>
              )}
           </div>
