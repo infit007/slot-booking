@@ -199,7 +199,7 @@ app.get('/api/slots/:date', (req, res) => {
       availableSlots: availableSlots.length,
       fullyBookedSlots: fullyBookedSlots.length,
       totalBookings: totalBookings,
-      maxBookings: 1000
+      maxBookings: 1200
     });
 
     res.json({
@@ -209,7 +209,7 @@ app.get('/api/slots/:date', (req, res) => {
       fullyBookedSlots,
       allSlots: timeSlots,
       totalBookings: totalBookings,
-      maxBookings: 1000
+      maxBookings: 1200
     });
   });
 });
@@ -254,7 +254,7 @@ app.get('/api/slots/status/overall', (req, res) => {
     }
     
     const totalBookings = parseInt(result.rows[0].count);
-    const maxSlots = 1000; // 1000 total slots per day
+    const maxSlots = 1200; // 1200 total slots per day
     const availableSlots = Math.max(0, maxSlots - totalBookings);
     
     res.json({
@@ -304,8 +304,8 @@ app.post('/api/bookings', validateBooking, (req, res) => {
           return res.status(500).json({ error: 'Database error' });
         }
 
-        if (parseInt(result.rows[0].count) >= 1000) {
-          return res.status(409).json({ error: 'Daily booking limit reached (1000 bookings)' });
+        if (parseInt(result.rows[0].count) >= 1200) {
+          return res.status(409).json({ error: 'Daily booking limit reached (1200 bookings)' });
         }
 
               // Create booking
@@ -492,8 +492,8 @@ app.get('/api/admin/stats', (req, res) => {
     
          res.json({
        totalBookings: parseInt(result.rows[0].total),
-       maxBookings: 1000,
-       availableBookings: 1000 - parseInt(result.rows[0].total)
+       maxBookings: 1200,
+       availableBookings: 1200 - parseInt(result.rows[0].total)
      });
   });
 });
